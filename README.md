@@ -23,7 +23,11 @@ uv add sandboxes
 ```
 
 or install with your preferred Python package manager and use the CLI
-for any language. 
+for any language, e.g.,:
+
+```bash
+uv pip install sandboxes
+```
 
 ## Quick Start
 
@@ -138,14 +142,6 @@ result = await run("python script.py")                     # Auto-selects
 `sandboxes` includes a powerful CLI for running code in **any language** from your terminal. Execute TypeScript, Go, Rust, Python, or any other language in isolated sandboxes.
 
 ### Installation
-
-The CLI is installed automatically with the package:
-
-```bash
-uv add sandboxes
-# or
-pip install sandboxes
-```
 
 ### Quick Start
 
