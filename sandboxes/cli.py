@@ -55,7 +55,8 @@ def cli():
 @click.option("--timeout", "-t", default=120, help="Timeout in seconds")
 @click.option("--reuse/--no-reuse", default=True, help="Reuse existing sandbox with same labels")
 @click.option("--keep/--no-keep", default=False, help="Keep sandbox after execution")
-def run(command, file, language, provider, image, env, label, timeout, reuse, keep):
+@click.option("--deps/--no-deps", default=False, help="Auto-install dependencies (go.mod)")
+def run(command, file, language, provider, image, env, label, timeout, reuse, keep, deps):
     """Run a command in a sandbox.
 
     Examples:
@@ -70,12 +71,32 @@ def run(command, file, language, provider, image, env, label, timeout, reuse, ke
         echo 'console.log("Hello!")' | sandboxes run --lang node
         cat script.ts | sandboxes run --lang typescript
 
+        # With auto-dependency installation (Go)
+        sandboxes run --file main.go --deps
+
         # With options
         sandboxes run "npm install express" -p e2b
         sandboxes run "echo $MY_VAR" -e MY_VAR=hello
     """
 
     async def _run():
+        # Determine language early
+        lang = language
+        if not lang and file:
+            # Infer from file extension
+            ext = os.path.splitext(file)[1].lower()
+            lang_map = {
+                ".py": "python",
+                ".js": "node",
+                ".ts": "typescript",
+                ".go": "go",
+                ".rs": "rust",
+                ".rb": "ruby",
+                ".java": "java",
+                ".sh": "bash",
+            }
+            lang = lang_map.get(ext)
+
         # Determine what to execute
         code_to_execute = None
 
@@ -99,25 +120,8 @@ def run(command, file, language, provider, image, env, label, timeout, reuse, ke
             )
             sys.exit(1)
 
-        # If we have code but no command wrapper, infer from language or file extension
+        # If we have code but no command wrapper, build execution command
         if code_to_execute and code_to_execute != command:
-            # Determine language
-            lang = language
-            if not lang and file:
-                # Infer from file extension
-                ext = os.path.splitext(file)[1].lower()
-                lang_map = {
-                    ".py": "python",
-                    ".js": "node",
-                    ".ts": "typescript",
-                    ".go": "go",
-                    ".rs": "rust",
-                    ".rb": "ruby",
-                    ".java": "java",
-                    ".sh": "bash",
-                }
-                lang = lang_map.get(ext)
-
             # Build execution command based on language
             if lang == "python":
                 code_to_execute = f"python3 -c '''{code_to_execute}'''"
@@ -130,9 +134,18 @@ def run(command, file, language, provider, image, env, label, timeout, reuse, ke
                 code_to_execute = f"cat > /tmp/script.ts << 'EOF'\n{code_to_execute}\nEOF\nnpx -y ts-node /tmp/script.ts"
             elif lang == "go":
                 # Write to temp file and use go run
-                code_to_execute = (
-                    f"cat > /tmp/main.go << 'EOF'\n{code_to_execute}\nEOF\ngo run /tmp/main.go"
-                )
+                if deps:
+                    # With deps, we'll init a module and download dependencies
+                    code_to_execute = (
+                        f"mkdir -p /tmp/goapp && cd /tmp/goapp && "
+                        f"cat > main.go << 'EOF'\n{code_to_execute}\nEOF\n"
+                        f"go mod init app 2>/dev/null || true && "
+                        f"go mod tidy && go mod download && go run main.go"
+                    )
+                else:
+                    code_to_execute = (
+                        f"cat > /tmp/main.go << 'EOF'\n{code_to_execute}\nEOF\ngo run /tmp/main.go"
+                    )
             elif lang == "rust":
                 # Write, compile, and run
                 code_to_execute = f"cat > /tmp/main.rs << 'EOF'\n{code_to_execute}\nEOF\nrustc /tmp/main.rs -o /tmp/app && /tmp/app"
@@ -174,6 +187,30 @@ def run(command, file, language, provider, image, env, label, timeout, reuse, ke
 
         if not sandbox:
             sandbox = await p.create_sandbox(config)
+
+        # Handle dependency installation for Go
+        if deps and lang == "go":
+            # Look for go.mod in current directory or file's directory
+            gomod_path = None
+            if file:
+                # Check same directory as the file
+                file_dir = os.path.dirname(os.path.abspath(file))
+                candidate = os.path.join(file_dir, "go.mod")
+                if os.path.exists(candidate):
+                    gomod_path = candidate
+            else:
+                # Check current working directory
+                candidate = os.path.join(os.getcwd(), "go.mod")
+                if os.path.exists(candidate):
+                    gomod_path = candidate
+
+            # If go.mod found, upload it and also check for go.sum
+            if gomod_path:
+                await p.upload_file(sandbox.id, gomod_path, "/tmp/goapp/go.mod")
+                # Also upload go.sum if it exists
+                gosum_path = gomod_path.replace("go.mod", "go.sum")
+                if os.path.exists(gosum_path):
+                    await p.upload_file(sandbox.id, gosum_path, "/tmp/goapp/go.sum")
 
         # Execute command
         result = await p.execute_command(sandbox.id, code_to_execute, env_vars=env_vars)

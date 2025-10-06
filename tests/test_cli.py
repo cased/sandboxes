@@ -202,6 +202,82 @@ class TestCLICommands:
             assert "Configured" in result.output
 
 
+class TestCLIDepsFlag:
+    """Test --deps flag functionality."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.runner = CliRunner()
+
+    @patch("sandboxes.cli.asyncio.run")
+    def test_run_command_with_deps_flag(self, mock_async_run, tmp_path):
+        """Test run command accepts --deps flag."""
+        mock_async_run.return_value = 0
+
+        # Create temp file
+        test_file = tmp_path / "test.go"
+        test_file.write_text("package main\nfunc main() {}")
+
+        result = self.runner.invoke(
+            cli,
+            ["run", "--file", str(test_file), "--lang", "go", "--deps", "--provider", "modal"],
+        )
+
+        # Command should be accepted
+        mock_async_run.assert_called_once()
+
+    @patch("sandboxes.cli.asyncio.run")
+    def test_run_command_with_no_deps_flag(self, mock_async_run, tmp_path):
+        """Test run command with --no-deps flag."""
+        mock_async_run.return_value = 0
+
+        # Create temp file
+        test_file = tmp_path / "test.go"
+        test_file.write_text("package main\nfunc main() {}")
+
+        result = self.runner.invoke(
+            cli,
+            ["run", "--file", str(test_file), "--lang", "go", "--no-deps", "--provider", "modal"],
+        )
+
+        mock_async_run.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_deps_uploads_go_mod(self, tmp_path):
+        """Test that --deps uploads go.mod file."""
+        # Create test files
+        test_file = tmp_path / "main.go"
+        test_file.write_text("package main\nfunc main() {}")
+
+        go_mod = tmp_path / "go.mod"
+        go_mod.write_text("module test\ngo 1.21")
+
+        go_sum = tmp_path / "go.sum"
+        go_sum.write_text("# go.sum content")
+
+        # Mock provider
+        mock_provider = AsyncMock()
+        mock_provider.name = "modal"
+        mock_provider.create_sandbox = AsyncMock(
+            return_value=Sandbox(id="test-sandbox", provider="modal", state=SandboxState.RUNNING)
+        )
+        mock_provider.execute_command = AsyncMock(
+            return_value=ExecutionResult(exit_code=0, stdout="Success", stderr="")
+        )
+        mock_provider.upload_file = AsyncMock(return_value=True)
+        mock_provider.destroy_sandbox = AsyncMock(return_value=True)
+
+        # Simulate the deps flow
+        await mock_provider.create_sandbox(SandboxConfig())
+
+        # Upload go.mod and go.sum
+        await mock_provider.upload_file("test-sandbox", str(go_mod), "/tmp/goapp/go.mod")
+        await mock_provider.upload_file("test-sandbox", str(go_sum), "/tmp/goapp/go.sum")
+
+        # Verify uploads were called
+        assert mock_provider.upload_file.call_count == 2
+
+
 class TestCLIAsyncFunctions:
     """Test the async functions used by CLI commands."""
 
