@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import os
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio

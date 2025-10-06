@@ -4,8 +4,9 @@ import asyncio
 import logging
 import os
 import time
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any
 
 from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
@@ -25,7 +26,7 @@ except ImportError:
 class E2BProvider(SandboxProvider):
     """E2B sandbox provider using the official SDK."""
 
-    def __init__(self, api_key: Optional[str] = None, **config):
+    def __init__(self, api_key: str | None = None, **config):
         """Initialize E2B provider."""
         super().__init__(**config)
 
@@ -44,7 +45,7 @@ class E2BProvider(SandboxProvider):
         self.timeout = config.get("timeout", 60)
 
         # Track active sandboxes with metadata
-        self._sandboxes: Dict[str, Dict[str, Any]] = {}
+        self._sandboxes: dict[str, dict[str, Any]] = {}
 
         # Lock for thread-safe operations
         self._lock = asyncio.Lock()
@@ -59,7 +60,7 @@ class E2BProvider(SandboxProvider):
         # AsyncSandbox.create() is a class method that creates and connects the sandbox
         return await E2BSandbox.create(template=template_id, envs=env_vars)
 
-    def _to_sandbox(self, e2b_sandbox, metadata: Dict[str, Any]) -> Sandbox:
+    def _to_sandbox(self, e2b_sandbox, metadata: dict[str, Any]) -> Sandbox:
         """Convert E2B sandbox to standard Sandbox."""
         return Sandbox(
             id=e2b_sandbox.sandbox_id,
@@ -111,7 +112,7 @@ class E2BProvider(SandboxProvider):
             logger.error(f"Failed to create E2B sandbox: {e}")
             raise SandboxError(f"Failed to create sandbox: {e}") from e
 
-    async def get_sandbox(self, sandbox_id: str) -> Optional[Sandbox]:
+    async def get_sandbox(self, sandbox_id: str) -> Sandbox | None:
         """Get sandbox by ID."""
         if sandbox_id in self._sandboxes:
             metadata = self._sandboxes[sandbox_id]
@@ -119,7 +120,7 @@ class E2BProvider(SandboxProvider):
             return self._to_sandbox(metadata["e2b_sandbox"], metadata)
         return None
 
-    async def list_sandboxes(self, labels: Optional[Dict[str, str]] = None) -> List[Sandbox]:
+    async def list_sandboxes(self, labels: dict[str, str] | None = None) -> list[Sandbox]:
         """List active sandboxes."""
         sandboxes = []
 
@@ -185,7 +186,7 @@ class E2BProvider(SandboxProvider):
 
         return sandboxes
 
-    async def find_sandbox(self, labels: Dict[str, str]) -> Optional[Sandbox]:
+    async def find_sandbox(self, labels: dict[str, str]) -> Sandbox | None:
         """Find a running sandbox with matching labels for reuse."""
         sandboxes = await self.list_sandboxes(labels=labels)
         if sandboxes:
@@ -199,8 +200,8 @@ class E2BProvider(SandboxProvider):
         self,
         sandbox_id: str,
         command: str,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
     ) -> ExecutionResult:
         """Execute shell command in the sandbox."""
         if sandbox_id not in self._sandboxes:
@@ -253,8 +254,8 @@ class E2BProvider(SandboxProvider):
         self,
         sandbox_id: str,
         command: str,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
     ) -> AsyncIterator[str]:
         """Stream execution output (simulated for E2B)."""
         # E2B SDK doesn't support streaming, so we execute and yield chunks
@@ -350,11 +351,11 @@ class E2BProvider(SandboxProvider):
     async def execute_commands(
         self,
         sandbox_id: str,
-        commands: List[str],
+        commands: list[str],
         stop_on_error: bool = True,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
-    ) -> List[ExecutionResult]:
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
+    ) -> list[ExecutionResult]:
         """Execute multiple commands in sequence."""
         results = []
 

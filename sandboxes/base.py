@@ -1,10 +1,11 @@
 """Base abstractions for sandbox providers."""
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any
 
 
 class SandboxState(Enum):
@@ -24,26 +25,26 @@ class SandboxConfig:
     """Configuration for creating a sandbox."""
 
     # Core configuration
-    image: Optional[str] = None  # Docker image or template name
-    language: Optional[str] = None  # For providers that work with language runtimes
+    image: str | None = None  # Docker image or template name
+    language: str | None = None  # For providers that work with language runtimes
 
     # Resource limits
-    memory_mb: Optional[int] = None
-    cpu_cores: Optional[float] = None
-    timeout_seconds: Optional[int] = 120
+    memory_mb: int | None = None
+    cpu_cores: float | None = None
+    timeout_seconds: int | None = 120
 
     # Environment
-    env_vars: Dict[str, str] = field(default_factory=dict)
-    labels: Dict[str, str] = field(default_factory=dict)  # For finding/reusing sandboxes
+    env_vars: dict[str, str] = field(default_factory=dict)
+    labels: dict[str, str] = field(default_factory=dict)  # For finding/reusing sandboxes
 
     # Provider-specific configuration
-    provider_config: Dict[str, Any] = field(default_factory=dict)
+    provider_config: dict[str, Any] = field(default_factory=dict)
 
     # Setup
-    setup_commands: List[str] = field(default_factory=list)  # Commands to run on creation
-    working_dir: Optional[str] = None
+    setup_commands: list[str] = field(default_factory=list)  # Commands to run on creation
+    working_dir: str | None = None
 
-    def model_copy(self, update: Optional[Dict[str, Any]] = None) -> "SandboxConfig":
+    def model_copy(self, update: dict[str, Any] | None = None) -> "SandboxConfig":
         """Return a new config with optional updated fields (pydantic-like)."""
         data = asdict(self)
         if update:
@@ -60,7 +61,7 @@ class ExecutionResult:
     stderr: str
 
     # Timing information
-    duration_ms: Optional[int] = None
+    duration_ms: int | None = None
 
     # Metadata
     truncated: bool = False
@@ -81,14 +82,14 @@ class Sandbox:
     state: SandboxState
 
     # Metadata
-    labels: Dict[str, str] = field(default_factory=dict)
-    created_at: Optional[datetime] = None
+    labels: dict[str, str] = field(default_factory=dict)
+    created_at: datetime | None = None
 
     # Connection info (provider-specific)
-    connection_info: Dict[str, Any] = field(default_factory=dict)
+    connection_info: dict[str, Any] = field(default_factory=dict)
 
     # Provider-specific metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class SandboxProvider(ABC):
@@ -110,12 +111,12 @@ class SandboxProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_sandbox(self, sandbox_id: str) -> Optional[Sandbox]:
+    async def get_sandbox(self, sandbox_id: str) -> Sandbox | None:
         """Get sandbox by ID."""
         pass
 
     @abstractmethod
-    async def list_sandboxes(self, labels: Optional[Dict[str, str]] = None) -> List[Sandbox]:
+    async def list_sandboxes(self, labels: dict[str, str] | None = None) -> list[Sandbox]:
         """List sandboxes, optionally filtered by labels."""
         pass
 
@@ -124,8 +125,8 @@ class SandboxProvider(ABC):
         self,
         sandbox_id: str,
         command: str,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
     ) -> ExecutionResult:
         """Execute a command in a sandbox."""
         pass
@@ -137,7 +138,7 @@ class SandboxProvider(ABC):
 
     # Optional methods with default implementations
 
-    async def find_sandbox(self, labels: Dict[str, str]) -> Optional[Sandbox]:
+    async def find_sandbox(self, labels: dict[str, str]) -> Sandbox | None:
         """Find a running sandbox with matching labels."""
         sandboxes = await self.list_sandboxes(labels=labels)
         running = [s for s in sandboxes if s.state == SandboxState.RUNNING]
@@ -154,11 +155,11 @@ class SandboxProvider(ABC):
     async def execute_commands(
         self,
         sandbox_id: str,
-        commands: List[str],
+        commands: list[str],
         stop_on_error: bool = True,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
-    ) -> List[ExecutionResult]:
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
+    ) -> list[ExecutionResult]:
         """Execute multiple commands in sequence."""
         results = []
         for command in commands:
@@ -172,8 +173,8 @@ class SandboxProvider(ABC):
         self,
         sandbox_id: str,
         command: str,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
     ) -> AsyncIterator[str]:
         """Stream command output (if supported by provider)."""
         # Default implementation just returns the full output

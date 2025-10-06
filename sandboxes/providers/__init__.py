@@ -1,7 +1,5 @@
 """Sandbox provider implementations."""
 
-from typing import Optional, Type
-
 from ..base import SandboxProvider
 
 # Import providers conditionally
@@ -50,7 +48,7 @@ except ImportError:
     pass
 
 
-def get_provider(name: str) -> Optional[Type[SandboxProvider]]:
+def get_provider(name: str) -> type[SandboxProvider] | None:
     """Get a provider class by name."""
     return _providers.get(name)
 

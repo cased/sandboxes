@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,8 +28,8 @@ class BenchmarkResult:
     operation: str
     duration_ms: float
     success: bool
-    error: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    error: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -46,7 +46,7 @@ class ProviderMetrics:
     min_duration_ms: float
     max_duration_ms: float
     stddev_duration_ms: float
-    operations: Dict[str, Dict[str, float]]
+    operations: dict[str, dict[str, float]]
 
 
 class SandboxBenchmark:
@@ -55,7 +55,7 @@ class SandboxBenchmark:
     def __init__(self, iterations: int = 5):
         """Initialize benchmark suite."""
         self.iterations = iterations
-        self.results: List[BenchmarkResult] = []
+        self.results: list[BenchmarkResult] = []
         self.providers = {}
 
         # Initialize available providers
@@ -87,7 +87,7 @@ class SandboxBenchmark:
             except Exception as e:
                 print(f"❌ Modal provider failed: {e}")
 
-    async def benchmark_create_sandbox(self, provider_name: str) -> List[BenchmarkResult]:
+    async def benchmark_create_sandbox(self, provider_name: str) -> list[BenchmarkResult]:
         """Benchmark sandbox creation."""
         provider = self.providers[provider_name]
         results = []
@@ -130,7 +130,7 @@ class SandboxBenchmark:
 
         return results
 
-    async def benchmark_execute_command(self, provider_name: str) -> List[BenchmarkResult]:
+    async def benchmark_execute_command(self, provider_name: str) -> list[BenchmarkResult]:
         """Benchmark command execution."""
         provider = self.providers[provider_name]
         results = []
@@ -190,7 +190,7 @@ class SandboxBenchmark:
 
         return results
 
-    async def benchmark_reuse_sandbox(self, provider_name: str) -> List[BenchmarkResult]:
+    async def benchmark_reuse_sandbox(self, provider_name: str) -> list[BenchmarkResult]:
         """Benchmark sandbox reuse via labels."""
         provider = self.providers[provider_name]
         results = []
@@ -272,7 +272,7 @@ class SandboxBenchmark:
 
         return results
 
-    async def run_provider_benchmark(self, provider_name: str) -> List[BenchmarkResult]:
+    async def run_provider_benchmark(self, provider_name: str) -> list[BenchmarkResult]:
         """Run all benchmarks for a single provider."""
         print(f"\n📊 Benchmarking {provider_name}...")
         all_results = []
@@ -294,7 +294,7 @@ class SandboxBenchmark:
 
         return all_results
 
-    def calculate_metrics(self, results: List[BenchmarkResult]) -> Dict[str, ProviderMetrics]:
+    def calculate_metrics(self, results: list[BenchmarkResult]) -> dict[str, ProviderMetrics]:
         """Calculate aggregated metrics from results."""
         metrics = {}
 
@@ -355,7 +355,7 @@ class SandboxBenchmark:
 
         return metrics
 
-    def print_results(self, metrics: Dict[str, ProviderMetrics]):
+    def print_results(self, metrics: dict[str, ProviderMetrics]):
         """Print benchmark results in a nice format."""
         print("\n" + "=" * 80)
         print("🏆 BENCHMARK RESULTS")
@@ -448,7 +448,7 @@ class SandboxBenchmark:
                 )
                 print(f"Best Reuse: {best_reuse[0]} ({best_reuse[1].get('avg_ms', 0):.2f}ms)")
 
-    async def run(self) -> Dict[str, ProviderMetrics]:
+    async def run(self) -> dict[str, ProviderMetrics]:
         """Run full benchmark suite."""
         print("🚀 Starting Sandbox Provider Benchmarks")
         print(f"   Iterations per test: {self.iterations}")
@@ -475,7 +475,7 @@ class SandboxBenchmark:
 
         return metrics
 
-    def save_results(self, results: List[BenchmarkResult], metrics: Dict[str, ProviderMetrics]):
+    def save_results(self, results: list[BenchmarkResult], metrics: dict[str, ProviderMetrics]):
         """Save benchmark results to JSON file."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"benchmark_results_{timestamp}.json"

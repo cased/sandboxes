@@ -6,7 +6,6 @@ import os
 import sys
 import time
 from statistics import mean, median
-from typing import Dict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,7 +15,7 @@ from sandboxes.providers.e2b import E2BProvider
 from sandboxes.providers.modal import ModalProvider
 
 
-async def test_cold_startup(provider, provider_name: str, config: SandboxConfig) -> Dict:
+async def test_cold_startup(provider, provider_name: str, config: SandboxConfig) -> dict:
     """Test completely cold startup - first sandbox after provider init."""
     print(f"\n🥶 Testing COLD startup for {provider_name}")
 
@@ -51,7 +50,7 @@ async def test_cold_startup(provider, provider_name: str, config: SandboxConfig)
 
 async def test_warm_startup(
     provider, provider_name: str, config: SandboxConfig, iterations: int = 5
-) -> Dict:
+) -> dict:
     """Test warm startup - multiple sandboxes in sequence."""
     print(f"\n🔥 Testing WARM startup for {provider_name} ({iterations} iterations)")
 
@@ -100,7 +99,7 @@ async def test_warm_startup(
 
 async def test_concurrent_warm(
     provider, provider_name: str, config: SandboxConfig, concurrency: int = 3
-) -> Dict:
+) -> dict:
     """Test concurrent sandbox creation to see if there's shared warm state."""
     print(f"\n⚡ Testing CONCURRENT creation for {provider_name} ({concurrency} concurrent)")
 

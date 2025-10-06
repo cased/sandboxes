@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from statistics import mean, median, quantiles, stdev
-from typing import Any, Dict, List
+from typing import Any
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -59,7 +59,7 @@ BENCHMARKS = [
 ]
 
 
-def calculate_percentiles(data: List[float]) -> Dict[str, float]:
+def calculate_percentiles(data: list[float]) -> dict[str, float]:
     """Calculate p50, p95, p99 percentiles."""
     if not data:
         return {"p50": 0, "p95": 0, "p99": 0}
@@ -85,7 +85,7 @@ def calculate_percentiles(data: List[float]) -> Dict[str, float]:
         }
 
 
-def run_benchmark(script: str, run_number: int) -> Dict[str, Any]:
+def run_benchmark(script: str, run_number: int) -> dict[str, Any]:
     """Run a single benchmark and capture output."""
     script_path = Path(__file__).parent / script
 

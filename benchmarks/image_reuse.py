@@ -6,7 +6,6 @@ import os
 import sys
 import time
 from statistics import mean, median
-from typing import Dict, List
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,7 +17,7 @@ from sandboxes.providers.modal import ModalProvider
 
 async def test_same_image_reuse(
     provider, provider_name: str, image: str, iterations: int = 5
-) -> Dict:
+) -> dict:
     """Test creating multiple sandboxes with the same image."""
     print(f"\n🔄 Testing SAME IMAGE reuse: {image}")
 
@@ -66,7 +65,7 @@ async def test_same_image_reuse(
     }
 
 
-async def test_different_images(provider, provider_name: str, images: List[str]) -> Dict:
+async def test_different_images(provider, provider_name: str, images: list[str]) -> dict:
     """Test creating sandboxes with different images."""
     print("\n🆕 Testing DIFFERENT IMAGES")
 
@@ -129,7 +128,7 @@ async def test_different_images(provider, provider_name: str, images: List[str])
 
 async def test_concurrent_same_image(
     provider, provider_name: str, image: str, concurrency: int = 3
-) -> Dict:
+) -> dict:
     """Test concurrent sandboxes with same image."""
     print(f"\n⚡ Testing CONCURRENT same image: {image}")
 

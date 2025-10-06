@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from .base import ExecutionResult, SandboxConfig
 from .base import Sandbox as BaseSandbox

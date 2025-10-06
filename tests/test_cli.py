@@ -1,7 +1,6 @@
 """Tests for the CLI module."""
 
 from datetime import datetime
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -179,7 +178,7 @@ class TestCLICommands:
         """Test providers command."""
         with patch("os.getenv") as mock_getenv, patch("os.path.exists") as mock_exists:
 
-            def getenv_side_effect(key: str) -> Optional[str]:
+            def getenv_side_effect(key: str) -> str | None:
                 if key == "E2B_API_KEY":
                     return "test_key"
                 if key in {"CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_KEY"}:

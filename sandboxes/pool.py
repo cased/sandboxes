@@ -4,10 +4,11 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 from .base import Sandbox, SandboxConfig
 from .exceptions import SandboxQuotaError
@@ -44,9 +45,9 @@ class PoolConfig:
     cleanup_interval: int = 60  # Cleanup check interval in seconds
 
     # Lifecycle hooks
-    on_create: Optional[Callable] = None
-    on_destroy: Optional[Callable] = None
-    on_reuse: Optional[Callable] = None
+    on_create: Callable | None = None
+    on_destroy: Callable | None = None
+    on_reuse: Callable | None = None
 
 
 @dataclass
@@ -60,8 +61,8 @@ class SandboxPoolEntry:
     last_accessed: datetime
     access_count: int = 0
     is_idle: bool = True
-    labels: Dict[str, str] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    labels: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class SandboxPool:
@@ -77,24 +78,24 @@ class SandboxPool:
     - Health monitoring
     """
 
-    def __init__(self, pool_config: Optional[PoolConfig] = None):
+    def __init__(self, pool_config: PoolConfig | None = None):
         """Initialize sandbox pool."""
         self.config = pool_config or PoolConfig()
 
         # Pool storage
-        self._pool: Dict[str, SandboxPoolEntry] = {}
-        self._idle_sandboxes: Set[str] = set()
-        self._busy_sandboxes: Set[str] = set()
+        self._pool: dict[str, SandboxPoolEntry] = {}
+        self._idle_sandboxes: set[str] = set()
+        self._busy_sandboxes: set[str] = set()
 
         # Label index for fast lookup
-        self._label_index: Dict[str, Set[str]] = {}
+        self._label_index: dict[str, set[str]] = {}
 
         # Locks for thread-safe operations
         self._lock = asyncio.Lock()
         self._condition = asyncio.Condition(self._lock)
 
         # Cleanup task
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: asyncio.Task | None = None
 
         # Statistics
         self._stats = {
@@ -126,7 +127,7 @@ class SandboxPool:
         await self.clear()
 
     async def acquire(
-        self, provider: Any, config: SandboxConfig, timeout: Optional[int] = None
+        self, provider: Any, config: SandboxConfig, timeout: int | None = None
     ) -> Sandbox:
         """
         Acquire a sandbox from the pool or create a new one.
@@ -148,7 +149,7 @@ class SandboxPool:
         if self.config.max_total <= 0:
             raise SandboxQuotaError("Pool limit reached: 0")
 
-        eviction_entry: Optional[SandboxPoolEntry] = None
+        eviction_entry: SandboxPoolEntry | None = None
 
         try:
             async with asyncio.timeout(timeout):
@@ -200,7 +201,7 @@ class SandboxPool:
         Args:
             sandbox_id: ID of the sandbox to release
         """
-        evictions: List[SandboxPoolEntry] = []
+        evictions: list[SandboxPoolEntry] = []
 
         async with self._lock:
             if sandbox_id in self._pool:
@@ -281,7 +282,7 @@ class SandboxPool:
 
         return sandbox
 
-    async def _find_reusable_sandbox(self, labels: Dict[str, str]) -> Optional[Sandbox]:
+    async def _find_reusable_sandbox(self, labels: dict[str, str]) -> Sandbox | None:
         """Find an idle sandbox with matching labels."""
         # Build label keys
         label_keys = [f"{k}:{v}" for k, v in labels.items()]
@@ -307,14 +308,14 @@ class SandboxPool:
 
         return None
 
-    async def find_by_labels(self, labels: Dict[str, str]) -> List[Sandbox]:
+    async def find_by_labels(self, labels: dict[str, str]) -> list[Sandbox]:
         """Return sandboxes that match the provided labels."""
         if not labels:
             return []
 
         async with self._lock:
             label_keys = [f"{k}:{v}" for k, v in labels.items()]
-            matching_ids: Optional[Set[str]] = None
+            matching_ids: set[str] | None = None
 
             for label_key in label_keys:
                 sandbox_ids = self._label_index.get(label_key, set())
@@ -364,7 +365,7 @@ class SandboxPool:
         async with self._lock:
             self._remove_from_pool_locked(sandbox_id)
 
-    def _prepare_idle_eviction_locked(self) -> Optional[SandboxPoolEntry]:
+    def _prepare_idle_eviction_locked(self) -> SandboxPoolEntry | None:
         """Choose the least-recently-used idle sandbox and remove it from tracking."""
         if not self._idle_sandboxes:
             return None
@@ -383,7 +384,7 @@ class SandboxPool:
 
         return self._remove_from_pool_locked(lru_id)
 
-    def _remove_from_pool_locked(self, sandbox_id: str) -> Optional[SandboxPoolEntry]:
+    def _remove_from_pool_locked(self, sandbox_id: str) -> SandboxPoolEntry | None:
         if sandbox_id not in self._pool:
             return None
 
@@ -403,7 +404,7 @@ class SandboxPool:
 
         return entry
 
-    async def _pop_entry_for_destroy(self, sandbox_id: str) -> Optional[SandboxPoolEntry]:
+    async def _pop_entry_for_destroy(self, sandbox_id: str) -> SandboxPoolEntry | None:
         async with self._lock:
             return self._remove_from_pool_locked(sandbox_id)
 
@@ -465,7 +466,7 @@ class SandboxPool:
         await self._cleanup_expired()
         return self._stats["destroyed"] - destroyed_before
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get pool statistics."""
         return {
             **self._stats,
@@ -474,16 +475,16 @@ class SandboxPool:
             "busy": len(self._busy_sandboxes),
         }
 
-    async def check_health(self) -> List[str]:
+    async def check_health(self) -> list[str]:
         """Return IDs of sandboxes flagged as unhealthy."""
-        unhealthy: List[str] = []
+        unhealthy: list[str] = []
         async with self._lock:
             for sandbox_id, entry in self._pool.items():
                 if entry.metadata.get("healthy") is False:
                     unhealthy.append(sandbox_id)
         return unhealthy
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check pool health."""
         stats = self.get_stats()
 
@@ -514,14 +515,14 @@ class ConnectionPool:
         self.max_idle_time = max_idle_time
         self.ttl = ttl
 
-        self._connections: Dict[str, Sandbox] = {}
-        self._idle_connections: Set[str] = set()
-        self._connection_metadata: Dict[str, Dict[str, Any]] = {}
+        self._connections: dict[str, Sandbox] = {}
+        self._idle_connections: set[str] = set()
+        self._connection_metadata: dict[str, dict[str, Any]] = {}
         self._lock = asyncio.Lock()
 
     async def get_or_create(self, config: SandboxConfig) -> Sandbox:
         """Get or create a connection."""
-        to_destroy: Optional[Sandbox] = None
+        to_destroy: Sandbox | None = None
 
         while True:
             async with self._lock:
@@ -608,7 +609,7 @@ class ConnectionPool:
                 del self._connection_metadata[conn_id]
                 self._idle_connections.remove(conn_id)
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """Get pool metrics."""
         return {
             "total_created": (
@@ -621,7 +622,7 @@ class ConnectionPool:
             "active_connections": len(self._connections) - len(self._idle_connections),
         }
 
-    def _select_idle_connection_locked(self) -> Optional[str]:
+    def _select_idle_connection_locked(self) -> str | None:
         if not self._idle_connections:
             return None
 

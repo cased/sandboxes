@@ -1,7 +1,7 @@
 """Unified sandbox manager for multi-provider support."""
 
 import logging
-from typing import Any, Dict, List, Optional, Type
+from typing import Any
 
 from .base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider
 from .exceptions import ProviderError
@@ -20,17 +20,17 @@ class SandboxManager:
     - Provider fallback on failures
     """
 
-    def __init__(self, default_provider: Optional[str] = None):
+    def __init__(self, default_provider: str | None = None):
         """Initialize the sandbox manager."""
-        self.providers: Dict[str, SandboxProvider] = {}
+        self.providers: dict[str, SandboxProvider] = {}
         self.default_provider = default_provider
-        self._provider_health: Dict[str, bool] = {}
+        self._provider_health: dict[str, bool] = {}
 
     def register_provider(
         self,
         name: str,
-        provider_class: Type[SandboxProvider],
-        config: Optional[Dict[str, Any]] = None,
+        provider_class: type[SandboxProvider],
+        config: dict[str, Any] | None = None,
     ) -> None:
         """Register a sandbox provider."""
         config = config or {}
@@ -45,7 +45,7 @@ class SandboxManager:
             logger.error(f"Failed to register provider {name}: {e}")
             raise ProviderError(f"Failed to register provider {name}: {e}") from e
 
-    def get_provider(self, name: Optional[str] = None) -> SandboxProvider:
+    def get_provider(self, name: str | None = None) -> SandboxProvider:
         """Get a provider by name or the default provider."""
         name = name or self.default_provider
         if not name:
@@ -59,8 +59,8 @@ class SandboxManager:
     async def create_sandbox(
         self,
         config: SandboxConfig,
-        provider: Optional[str] = None,
-        fallback_providers: Optional[List[str]] = None,
+        provider: str | None = None,
+        fallback_providers: list[str] | None = None,
     ) -> Sandbox:
         """
         Create a sandbox with automatic provider fallback.
@@ -98,7 +98,7 @@ class SandboxManager:
     async def get_or_create_sandbox(
         self,
         config: SandboxConfig,
-        provider: Optional[str] = None,
+        provider: str | None = None,
     ) -> Sandbox:
         """Get existing sandbox with matching labels or create new one."""
         provider_obj = self.get_provider(provider)
@@ -108,9 +108,9 @@ class SandboxManager:
         self,
         sandbox_id: str,
         command: str,
-        provider: Optional[str] = None,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
+        provider: str | None = None,
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
         mask_secrets: bool = True,
     ) -> ExecutionResult:
         """
@@ -136,7 +136,7 @@ class SandboxManager:
     def _mask_secrets(
         self,
         result: ExecutionResult,
-        env_vars: Dict[str, str],
+        env_vars: dict[str, str],
     ) -> ExecutionResult:
         """Mask secret values in command output."""
         stdout = result.stdout
@@ -162,7 +162,7 @@ class SandboxManager:
     async def destroy_sandbox(
         self,
         sandbox_id: str,
-        provider: Optional[str] = None,
+        provider: str | None = None,
     ) -> bool:
         """Destroy a sandbox."""
         provider_obj = self.get_provider(provider)
@@ -170,9 +170,9 @@ class SandboxManager:
 
     async def list_sandboxes(
         self,
-        provider: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
-    ) -> List[Sandbox]:
+        provider: str | None = None,
+        labels: dict[str, str] | None = None,
+    ) -> list[Sandbox]:
         """List sandboxes from one or all providers."""
         if provider:
             provider_obj = self.get_provider(provider)
@@ -189,7 +189,7 @@ class SandboxManager:
 
         return all_sandboxes
 
-    async def health_check(self, provider: Optional[str] = None) -> Dict[str, bool]:
+    async def health_check(self, provider: str | None = None) -> dict[str, bool]:
         """Check health of one or all providers."""
         if provider:
             provider_obj = self.get_provider(provider)
@@ -212,8 +212,8 @@ class SandboxManager:
 
     async def cleanup_sandboxes(
         self,
-        provider: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
+        provider: str | None = None,
+        labels: dict[str, str] | None = None,
         exclude_running: bool = True,
     ) -> int:
         """

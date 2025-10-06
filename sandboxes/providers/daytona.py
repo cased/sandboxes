@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
@@ -30,7 +30,7 @@ except ImportError:
 class DaytonaProvider(SandboxProvider):
     """Daytona sandbox provider implementation."""
 
-    def __init__(self, api_key: Optional[str] = None, **config):
+    def __init__(self, api_key: str | None = None, **config):
         """Initialize Daytona provider."""
         super().__init__(**config)
 
@@ -131,7 +131,7 @@ class DaytonaProvider(SandboxProvider):
             logger.error(f"Failed to create Daytona sandbox: {e}")
             raise SandboxError(f"Failed to create sandbox: {e}") from e
 
-    async def get_sandbox(self, sandbox_id: str) -> Optional[Sandbox]:
+    async def get_sandbox(self, sandbox_id: str) -> Sandbox | None:
         """Get sandbox by ID."""
         try:
             daytona_sandbox = self.client.get(sandbox_id)
@@ -142,7 +142,7 @@ class DaytonaProvider(SandboxProvider):
             logger.error(f"Failed to get sandbox {sandbox_id}: {e}")
             raise SandboxError(f"Failed to get sandbox: {e}") from e
 
-    async def list_sandboxes(self, labels: Optional[Dict[str, str]] = None) -> List[Sandbox]:
+    async def list_sandboxes(self, labels: dict[str, str] | None = None) -> list[Sandbox]:
         """List sandboxes, optionally filtered by labels."""
         try:
             # Daytona's list() returns a PaginatedSandboxes object with items attribute
@@ -164,8 +164,8 @@ class DaytonaProvider(SandboxProvider):
         self,
         sandbox_id: str,
         command: str,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
     ) -> ExecutionResult:
         """Execute a command in a sandbox."""
         try:
@@ -206,7 +206,7 @@ class DaytonaProvider(SandboxProvider):
             logger.error(f"Failed to destroy sandbox {sandbox_id}: {e}")
             raise SandboxError(f"Failed to destroy sandbox: {e}") from e
 
-    async def find_sandbox(self, labels: Dict[str, str]) -> Optional[Sandbox]:
+    async def find_sandbox(self, labels: dict[str, str]) -> Sandbox | None:
         """Find a running sandbox with matching labels (smart reuse from comet)."""
         try:
             sandboxes = await self.list_sandboxes(labels=labels)

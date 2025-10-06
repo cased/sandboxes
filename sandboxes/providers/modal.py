@@ -3,9 +3,10 @@
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any
 
 from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
@@ -53,7 +54,7 @@ class ModalProvider(SandboxProvider):
         self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
 
         # Track active sandboxes with metadata
-        self._sandboxes: Dict[str, Dict[str, Any]] = {}
+        self._sandboxes: dict[str, dict[str, Any]] = {}
 
         # Lock for thread-safe operations
         self._lock = asyncio.Lock()
@@ -75,7 +76,7 @@ class ModalProvider(SandboxProvider):
         )
         return sandbox
 
-    def _to_sandbox(self, modal_sandbox: ModalSandbox, metadata: Dict[str, Any]) -> Sandbox:
+    def _to_sandbox(self, modal_sandbox: ModalSandbox, metadata: dict[str, Any]) -> Sandbox:
         """Convert Modal sandbox to standard Sandbox."""
         return Sandbox(
             id=modal_sandbox.object_id,
@@ -152,7 +153,7 @@ class ModalProvider(SandboxProvider):
             logger.error(f"Failed to create Modal sandbox: {e}")
             raise SandboxError(f"Failed to create sandbox: {e}") from e
 
-    async def get_sandbox(self, sandbox_id: str) -> Optional[Sandbox]:
+    async def get_sandbox(self, sandbox_id: str) -> Sandbox | None:
         """Get sandbox by ID."""
         if sandbox_id in self._sandboxes:
             metadata = self._sandboxes[sandbox_id]
@@ -184,7 +185,7 @@ class ModalProvider(SandboxProvider):
         except Exception:
             return None
 
-    async def list_sandboxes(self, labels: Optional[Dict[str, str]] = None) -> List[Sandbox]:
+    async def list_sandboxes(self, labels: dict[str, str] | None = None) -> list[Sandbox]:
         """List active sandboxes."""
         sandboxes = []
 
@@ -223,7 +224,7 @@ class ModalProvider(SandboxProvider):
 
         return sandboxes
 
-    async def find_sandbox(self, labels: Dict[str, str]) -> Optional[Sandbox]:
+    async def find_sandbox(self, labels: dict[str, str]) -> Sandbox | None:
         """Find a running sandbox with matching labels for reuse."""
         sandboxes = await self.list_sandboxes(labels=labels)
         if sandboxes:
@@ -239,8 +240,8 @@ class ModalProvider(SandboxProvider):
         self,
         sandbox_id: str,
         command: str,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
     ) -> ExecutionResult:
         """Execute command in the sandbox."""
         if sandbox_id not in self._sandboxes:
@@ -295,8 +296,8 @@ class ModalProvider(SandboxProvider):
         self,
         sandbox_id: str,
         command: str,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
     ) -> AsyncIterator[str]:
         """Stream execution output."""
         # Modal doesn't support streaming directly, so we execute and yield chunks
@@ -351,11 +352,11 @@ class ModalProvider(SandboxProvider):
     async def execute_commands(
         self,
         sandbox_id: str,
-        commands: List[str],
+        commands: list[str],
         stop_on_error: bool = True,
-        timeout: Optional[int] = None,
-        env_vars: Optional[Dict[str, str]] = None,
-    ) -> List[ExecutionResult]:
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
+    ) -> list[ExecutionResult]:
         """Execute multiple commands in sequence."""
         results = []
 

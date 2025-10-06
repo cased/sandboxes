@@ -11,7 +11,6 @@ Usage:
 import asyncio
 import os
 import sys
-from typing import Optional
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -105,7 +104,7 @@ async def test_provider(provider_name: str, provider):
         return 0, len(test_commands) if "test_commands" in locals() else 1
 
 
-async def main(provider_filter: Optional[str] = None):
+async def main(provider_filter: str | None = None):
     """Test all providers or a specific one."""
     print("🔬 SANDBOX PROVIDER TEST SUITE")
     print("=" * 60)

@@ -7,8 +7,9 @@ import base64
 import json
 import os
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import suppress
-from typing import Any, AsyncIterator
+from typing import Any
 
 import httpx
 

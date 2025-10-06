@@ -19,7 +19,7 @@ import sys
 import time
 from pathlib import Path
 from statistics import mean, median, quantiles, stdev
-from typing import Any, Dict, List
+from typing import Any
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -109,7 +109,7 @@ print(f'FFT: {len(result)} points')
 
 async def benchmark_provider(
     provider_name: str, test_name: str, command: str, runs: int, use_standard_image: bool = True
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Benchmark a single provider on a single test."""
     print(f"  [{provider_name}] Running {test_name}...")
 
@@ -168,7 +168,7 @@ async def benchmark_provider(
     return results
 
 
-async def run_benchmarks(providers: List[str], use_standard_image: bool = True):
+async def run_benchmarks(providers: list[str], use_standard_image: bool = True):
     """Run all benchmarks for all providers."""
     print("\n" + "=" * 80)
     print("COMPREHENSIVE SANDBOX BENCHMARK")
@@ -201,7 +201,7 @@ async def run_benchmarks(providers: List[str], use_standard_image: bool = True):
     return all_results
 
 
-def calculate_percentiles(data: List[float]) -> Dict[str, float]:
+def calculate_percentiles(data: list[float]) -> dict[str, float]:
     """Calculate p50, p95, p99 percentiles."""
     if not data:
         return {"p50": 0, "p95": 0, "p99": 0}
@@ -224,7 +224,7 @@ def calculate_percentiles(data: List[float]) -> Dict[str, float]:
         }
 
 
-def generate_report(results: List[Dict[str, Any]]):
+def generate_report(results: list[dict[str, Any]]):
     """Generate a formatted benchmark report."""
     print("\n" + "=" * 80)
     print("BENCHMARK RESULTS")

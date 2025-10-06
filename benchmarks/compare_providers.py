@@ -6,7 +6,6 @@ import os
 import sys
 import time
 from statistics import mean, median
-from typing import Dict, Optional
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sandboxes import SandboxConfig
 
 
-async def benchmark_provider(provider_class, name: str, runs: int = 3) -> Optional[Dict]:
+async def benchmark_provider(provider_class, name: str, runs: int = 3) -> dict | None:
     """Benchmark a single provider."""
     try:
         provider = provider_class()
