@@ -77,7 +77,6 @@ import asyncio
 from sandboxes import Sandbox
 
 async def main():
-    # Create a sandbox that persists for multiple operations
     async with Sandbox.create() as sandbox:
         # Install dependencies
         await sandbox.execute("pip install numpy pandas")
@@ -86,7 +85,6 @@ async def main():
         result = await sandbox.execute("python analyze.py")
         print(result.stdout)
 
-        # Upload/download files
         await sandbox.upload("data.csv", "/tmp/data.csv")
         await sandbox.download("/tmp/results.csv", "results.csv")
     # Automatically cleaned up on exit
@@ -95,6 +93,8 @@ asyncio.run(main())
 ```
 
 ### Smart Sandbox Reuse
+
+Use `get_or_create` with labels (which can include pre-set unique ids) to re-use particular sandboxes. Useful for agent sessions over time.
 
 ```python
 import asyncio
