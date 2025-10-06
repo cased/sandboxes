@@ -427,7 +427,9 @@ sandbox = await manager.create_sandbox(
 )
 ```
 
-### Smart Sandbox Reuse
+### Sandbox Reuse (Provider-Level)
+
+For advanced control, work directly with providers instead of the high-level `Sandbox` API:
 
 ```python
 # Sandboxes can be reused based on labels
