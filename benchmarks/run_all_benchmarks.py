@@ -25,37 +25,37 @@ BENCHMARKS = [
     {
         "name": "Comprehensive Benchmark",
         "script": "comprehensive_benchmark.py",
-        "runs": 3,  # Each run already does multiple iterations internally
+        "runs": 2,  # Each run already does multiple iterations internally
         "description": "Apples-to-apples comparison with realistic workloads",
     },
     {
         "name": "Lifecycle Breakdown",
         "script": "compare_providers.py",
-        "runs": 10,
+        "runs": 5,
         "description": "Create/execute/destroy timing breakdown",
     },
     {
         "name": "Cold vs Warm Start",
         "script": "cold_vs_warm.py",
-        "runs": 5,
+        "runs": 3,
         "description": "Cold start vs warm start performance",
     },
     {
         "name": "Simple Benchmark",
         "script": "simple_benchmark.py",
-        "runs": 10,
+        "runs": 5,
         "description": "Quick validation test",
     },
     {
         "name": "Concurrent Execution (20x)",
         "script": "benchmark_20x.py",
-        "runs": 5,
+        "runs": 3,
         "description": "Concurrent sandbox operations",
     },
     {
         "name": "Image Reuse",
         "script": "image_reuse.py",
-        "runs": 5,
+        "runs": 3,
         "description": "Image caching performance",
     },
 ]
