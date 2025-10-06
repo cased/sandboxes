@@ -1,6 +1,6 @@
 [project]
 name = "cased-sandboxes"
-version = "0.1.3"
+version = "0.1.5"
 description = "Universal library for AI code execution sandboxes"
 authors = [
     { name = "Sandboxes Contributors", email = "hello@cased.com" }
@@ -77,6 +77,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["sandboxes"]
+
+[tool.hatch.build]
+exclude = [
+    ".claude/",
+    "benchmarks/",
+    "tests/",
+    "scripts/",
+    "examples/",
+]
 
 [dependency-groups]
 dev = [

@@ -2,7 +2,7 @@
 
 Universal library for AI code execution sandboxes.
 
-[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Overview
@@ -19,7 +19,7 @@ Write your code once and switch between providers with a single line change, or 
 Add to your project:
 
 ```bash
-uv add sandboxes
+uv add cased-sandboxes
 ```
 
 or install with your preferred Python package manager and use the CLI
@@ -31,7 +31,7 @@ uv pip install cased-sandboxes
 
 ## Quick Start
 
-### The Simplest Way - One-Line Execution
+### One-line Execution + Auto-select Provider
 
 ```python
 import asyncio
@@ -94,21 +94,6 @@ async def main():
 asyncio.run(main())
 ```
 
-### Streaming Output
-
-```python
-import asyncio
-from sandboxes import Sandbox
-
-async def main():
-    # Stream long-running commands
-    async with Sandbox.create() as sandbox:
-        async for chunk in sandbox.stream("python train_model.py"):
-            print(chunk, end="", flush=True)
-
-asyncio.run(main())
-```
-
 ### Smart Sandbox Reuse
 
 ```python
@@ -126,7 +111,7 @@ async def main():
         labels={"project": "ml-training", "gpu": "true"}
     )
 
-    assert sandbox1.id == sandbox2.id  # Same sandbox!
+    assert sandbox1.id == sandbox2.id  # Same sandbox
 
 asyncio.run(main())
 ```
@@ -149,8 +134,6 @@ async def main():
 
     # Or specify directly with run()
     result = await run("python script.py", provider="modal")  # Runs on Modal
-    result = await run("python script.py", provider="e2b")    # Runs on E2B
-    result = await run("python script.py")                     # Auto-selects
 
 asyncio.run(main())
 ```
@@ -167,19 +150,7 @@ async def main():
     sandbox = await Sandbox.create(image="python:3.12-slim")
 
     # Or with specific providers
-    modal_provider = ModalProvider()
-    e2b_provider = E2BProvider()
     daytona_provider = DaytonaProvider()
-
-    # Modal: Use custom Docker images
-    config = SandboxConfig(image="python:3.12-slim")
-    sandbox = await modal_provider.create_sandbox(config)
-
-    # E2B: Use templates (base, code-interpreter, or custom)
-    config = SandboxConfig(image="code-interpreter")
-    sandbox = await e2b_provider.create_sandbox(config)
-
-    # Daytona: Use Docker images or snapshots
     config = SandboxConfig(image="daytonaio/ai-test:0.2.3")
     sandbox = await daytona_provider.create_sandbox(config)
 
@@ -187,6 +158,35 @@ asyncio.run(main())
 
 # Via CLI
 # sandboxes run "python --version" --image python:3.12-alpine
+```
+
+## API Reference
+
+### Core Classes
+
+- **`Sandbox`**: High-level interface with automatic provider management
+- **`SandboxConfig`**: Configuration for sandbox creation (labels, timeout, image)
+- **`ExecutionResult`**: Standardized result object (stdout, stderr, exit_code)
+- **`Manager`**: Multi-provider orchestration with failover
+- **`SandboxProvider`**: Abstract base class for provider implementations
+
+### Key Methods
+
+```python
+# High-level functions
+await run(command: str, provider: str = None) -> ExecutionResult
+await run_many(commands: list[str], provider: str = None) -> list[ExecutionResult]
+
+# Sandbox methods
+await Sandbox.create(provider=None, fallback=None, labels=None, image=None) -> Sandbox
+await Sandbox.get_or_create(labels: dict) -> Sandbox
+await Sandbox.find(labels: dict) -> Sandbox | None
+await sandbox.execute(command: str) -> ExecutionResult
+await sandbox.execute_many(commands: list[str]) -> list[ExecutionResult]
+await sandbox.stream(command: str) -> AsyncIterator[str]
+await sandbox.upload(local_path: str, remote_path: str)
+await sandbox.download(remote_path: str, local_path: str)
+await sandbox.destroy()
 ```
 
 ## Command Line Interface
@@ -215,8 +215,6 @@ sandboxes list
 ### Commands
 
 #### `run` - Execute Code
-
-**Three unix ways:**
 
 ```bash
 # 1. From file (auto-detects language)
@@ -335,7 +333,7 @@ cat main.go | sandboxes run --lang go
 curl -s https://example.com/script.py | sandboxes run --lang python
 ```
 
-**Auto-Dependency Installation:** Use `--deps` to automatically install dependencies from `go.mod` (located in the same directory as your code file). The CLI will upload `go.mod` and `go.sum` (if present) and run `go mod download` before executing your code.
+**Auto-Dependency Installation (`golang` only for now):** Use `--deps` to automatically install dependencies from `go.mod` (located in the same directory as your code file). The CLI will upload `go.mod` and `go.sum` (if present) and run `go mod download` before executing your code.
 
 
 ## Provider Configuration
@@ -471,21 +469,22 @@ from sandboxes import Manager, SandboxConfig
 from sandboxes.providers import E2BProvider, ModalProvider, DaytonaProvider, CloudflareProvider
 
 async def main():
-    # Initialize manager with multiple providers
-    manager = Manager(
-        providers=[
-            E2BProvider(),
-            ModalProvider(),
-            DaytonaProvider(),
-            CloudflareProvider(base_url="https://your-worker.workers.dev", api_token="..."),
-        ],
-        default_provider="e2b"
+    # Initialize manager and register providers
+    manager = Manager(default_provider="e2b")
+
+    manager.register_provider("e2b", E2BProvider, {})
+    manager.register_provider("modal", ModalProvider, {})
+    manager.register_provider("daytona", DaytonaProvider, {})
+    manager.register_provider(
+        "cloudflare",
+        CloudflareProvider,
+        {"base_url": "https://your-worker.workers.dev", "api_token": "..."}
     )
 
     # Manager handles failover automatically
     sandbox = await manager.create_sandbox(
         SandboxConfig(labels={"task": "test"}),
-        fallback=True  # Try other providers if primary fails
+        fallback_providers=["modal", "daytona"]  # Try these if primary fails
     )
 
 asyncio.run(main())
@@ -564,35 +563,6 @@ async def main():
     await pool.release(conn)
 
 asyncio.run(main())
-```
-
-## API Reference
-
-### Core Classes
-
-- **`Sandbox`**: High-level interface with automatic provider management
-- **`SandboxConfig`**: Configuration for sandbox creation (labels, timeout, image)
-- **`ExecutionResult`**: Standardized result object (stdout, stderr, exit_code)
-- **`Manager`**: Multi-provider orchestration with failover
-- **`SandboxProvider`**: Abstract base class for provider implementations
-
-### Key Methods
-
-```python
-# High-level functions
-await run(command: str, provider: str = None) -> ExecutionResult
-await run_many(commands: list[str], provider: str = None) -> list[ExecutionResult]
-
-# Sandbox methods
-await Sandbox.create(provider=None, fallback=None, labels=None, image=None) -> Sandbox
-await Sandbox.get_or_create(labels: dict) -> Sandbox
-await Sandbox.find(labels: dict) -> Sandbox | None
-await sandbox.execute(command: str) -> ExecutionResult
-await sandbox.execute_many(commands: list[str]) -> list[ExecutionResult]
-await sandbox.stream(command: str) -> AsyncIterator[str]
-await sandbox.upload(local_path: str, remote_path: str)
-await sandbox.download(remote_path: str, local_path: str)
-await sandbox.destroy()
 ```
 
 ## Architecture
@@ -721,43 +691,6 @@ go run /tmp/main.go
 asyncio.run(run_go())
 ```
 
-### Multi-Language AI Agent
-
-```python
-import asyncio
-from sandboxes import Sandbox
-
-async def execute_code(code: str, language: str):
-    """Execute code in any language."""
-    async with Sandbox.create() as sandbox:
-        if language == "python":
-            result = await sandbox.execute(f"python3 -c '{code}'")
-
-        elif language == "javascript":
-            result = await sandbox.execute(f"node -e '{code}'")
-
-        elif language == "typescript":
-            await sandbox.execute(f"echo '{code}' > /tmp/code.ts")
-            result = await sandbox.execute("npx -y ts-node /tmp/code.ts")
-
-        elif language == "go":
-            await sandbox.execute(f"echo '{code}' > /tmp/main.go")
-            result = await sandbox.execute("go run /tmp/main.go")
-
-        elif language == "rust":
-            await sandbox.execute(f"echo '{code}' > /tmp/main.rs")
-            await sandbox.execute("rustc /tmp/main.rs -o /tmp/app")
-            result = await sandbox.execute("/tmp/app")
-
-        else:
-            raise ValueError(f"Unsupported language: {language}")
-
-        return result.stdout if result.success else result.stderr
-
-# Example usage
-asyncio.run(execute_code("print('Hello from Python!')", "python"))
-```
-
 ## Common Use Cases
 
 ### AI Agent Code Execution
@@ -845,99 +778,6 @@ async def test_solution(code: str, test_cases: list):
 asyncio.run(test_solution("print(sum(map(int, input().split())))", [
     {"input": "1 2 3", "expected": "6"}
 ]))
-```
-
-## More Examples
-
-### Web Scraper Sandbox
-
-```python
-import asyncio
-from sandboxes import Sandbox
-
-async def scrape_in_sandbox(url: str):
-    async with Sandbox.create() as sandbox:
-        # Install dependencies
-        await sandbox.execute("pip install beautifulsoup4 requests")
-
-        # Execute scraping code
-        code = f"""
-import requests
-from bs4 import BeautifulSoup
-
-resp = requests.get("{url}")
-soup = BeautifulSoup(resp.text, 'html.parser')
-print(soup.title.text)
-"""
-        result = await sandbox.execute(f"python3 -c '{code}'")
-        return result.stdout
-
-# Example usage
-asyncio.run(scrape_in_sandbox("https://example.com"))
-```
-
-### ML Training Sandbox
-
-```python
-import asyncio
-from sandboxes import SandboxConfig
-from sandboxes.providers import ModalProvider
-
-async def train_model_sandboxed():
-    # Use Modal for GPU support
-    provider = ModalProvider()
-
-    sandbox = await provider.create_sandbox(
-        SandboxConfig(
-            image="pytorch/pytorch:latest",
-            labels={"task": "ml-training"},
-            timeout_seconds=3600,
-            provider_config={
-                "gpu": "T4",
-                "memory": 8192
-            }
-        )
-    )
-
-    # Upload and run training script
-    result = await provider.execute_command(
-        sandbox.id,
-        "python3 train.py --epochs 10"
-    )
-
-    await provider.destroy_sandbox(sandbox.id)
-    return result
-
-# Example usage
-asyncio.run(train_model_sandboxed())
-```
-
-### Multi-Provider Fallback
-
-```python
-import asyncio
-from sandboxes import Manager, SandboxConfig
-from sandboxes.providers import E2BProvider, ModalProvider, DaytonaProvider
-
-async def reliable_execution(code: str):
-    manager = Manager(
-        providers=[
-            E2BProvider(),      # Primary
-            ModalProvider(),    # Fallback 1
-            DaytonaProvider(),  # Fallback 2
-        ]
-    )
-
-    # Automatically tries providers in order until success
-    result = await manager.execute_with_fallback(
-        code,
-        SandboxConfig(labels={"reliability": "high"})
-    )
-
-    return result
-
-# Example usage
-asyncio.run(reliable_execution("print('Hello!')"))
 ```
 
 ## Troubleshooting
