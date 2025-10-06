@@ -93,9 +93,18 @@ class SandboxBenchmark:
         results = []
 
         for i in range(self.iterations):
+            # Use Daytona image for E2B and Daytona providers
+            image = "daytonaio/ai-test:0.2.3" if provider_name in ["daytona", "e2b"] else None
+            if provider_name == "e2b":
+                # E2B uses template ID (template built from daytonaio/ai-test:0.2.3)
+                # To build your own: cd e2b-daytona-benchmark && e2b template build
+                # Then update this ID with the one from e2b-daytona-benchmark/e2b.toml
+                image = "5x6hvr4zwye07thwhpkd"
+
             config = SandboxConfig(
                 labels={"benchmark": "create", "iteration": str(i)},
                 timeout_seconds=120,
+                image=image,
             )
 
             start = time.time()
@@ -135,10 +144,18 @@ class SandboxBenchmark:
         provider = self.providers[provider_name]
         results = []
 
+        # Use Daytona image for E2B and Daytona providers
+        image = "daytonaio/ai-test:0.2.3" if provider_name in ["daytona", "e2b"] else None
+        if provider_name == "e2b":
+            # E2B uses template ID (template built from daytonaio/ai-test:0.2.3)
+            # See e2b-daytona-benchmark/README.md for building your own
+            image = "5x6hvr4zwye07thwhpkd"
+
         # Create one sandbox for all iterations
         config = SandboxConfig(
             labels={"benchmark": "execute"},
             timeout_seconds=300,
+            image=image,
         )
 
         try:
@@ -195,8 +212,15 @@ class SandboxBenchmark:
         provider = self.providers[provider_name]
         results = []
 
+        # Use Daytona image for E2B and Daytona providers
+        image = "daytonaio/ai-test:0.2.3" if provider_name in ["daytona", "e2b"] else None
+        if provider_name == "e2b":
+            # E2B uses template ID (template built from daytonaio/ai-test:0.2.3)
+            # See e2b-daytona-benchmark/README.md for building your own
+            image = "5x6hvr4zwye07thwhpkd"
+
         labels = {"benchmark": "reuse", "session": "test123"}
-        config = SandboxConfig(labels=labels, timeout_seconds=120)
+        config = SandboxConfig(labels=labels, timeout_seconds=120, image=image)
 
         # Create initial sandbox
         start = time.time()
