@@ -271,12 +271,17 @@ sandboxes destroy sb-abc123 -p e2b
 echo 'const x: number = 42; console.log(x)' > test.ts
 sandboxes run --file test.ts
 
-# Go
+# Go with automatic dependency installation
+sandboxes run --file main.go --deps
+
+# Go from stdin
 cat main.go | sandboxes run --lang go
 
 # Python from remote URL
 curl -s https://example.com/script.py | sandboxes run --lang python
 ```
+
+**Auto-Dependency Installation:** Use `--deps` to automatically install dependencies from `go.mod` (located in the same directory as your code file). The CLI will upload `go.mod` and `go.sum` (if present) and run `go mod download` before executing your code.
 
 
 ## Provider Configuration

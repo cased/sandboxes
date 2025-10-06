@@ -71,6 +71,9 @@ def run(command, file, language, provider, image, env, label, timeout, reuse, ke
         echo 'console.log("Hello!")' | sandboxes run --lang node
         cat script.ts | sandboxes run --lang typescript
 
+        # With auto-dependency installation (Go)
+        sandboxes run --file main.go --deps
+
         # With options
         sandboxes run "npm install express" -p e2b
         sandboxes run "echo $MY_VAR" -e MY_VAR=hello
