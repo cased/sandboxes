@@ -63,26 +63,21 @@ class Sandbox:
 
     @classmethod
     def _auto_configure(cls) -> None:
-        """Auto-configure available providers based on environment variables."""
+        """
+        Auto-configure available providers based on environment variables.
+
+        Providers are registered in priority order:
+        1. Daytona
+        2. E2B
+        3. Modal
+        4. Cloudflare (experimental)
+
+        The first registered provider becomes the default unless explicitly set.
+        Users can override with Sandbox.configure(default_provider="...").
+        """
         manager = cls._manager
 
-        # Try to register E2B
-        if os.getenv("E2B_API_KEY"):
-            try:
-                manager.register_provider("e2b", E2BProvider, {})
-                print("✓ Registered E2B provider")
-            except Exception:
-                pass
-
-        # Try to register Modal
-        if os.path.exists(os.path.expanduser("~/.modal.toml")) or os.getenv("MODAL_TOKEN_ID"):
-            try:
-                manager.register_provider("modal", ModalProvider, {})
-                print("✓ Registered Modal provider")
-            except Exception:
-                pass
-
-        # Try to register Daytona
+        # Try to register Daytona (priority 1)
         if os.getenv("DAYTONA_API_KEY"):
             try:
                 manager.register_provider("daytona", DaytonaProvider, {})
@@ -90,7 +85,23 @@ class Sandbox:
             except Exception:
                 pass
 
-        # Try to register Cloudflare
+        # Try to register E2B (priority 2)
+        if os.getenv("E2B_API_KEY"):
+            try:
+                manager.register_provider("e2b", E2BProvider, {})
+                print("✓ Registered E2B provider")
+            except Exception:
+                pass
+
+        # Try to register Modal (priority 3)
+        if os.path.exists(os.path.expanduser("~/.modal.toml")) or os.getenv("MODAL_TOKEN_ID"):
+            try:
+                manager.register_provider("modal", ModalProvider, {})
+                print("✓ Registered Modal provider")
+            except Exception:
+                pass
+
+        # Try to register Cloudflare (priority 4 - experimental)
         base_url = os.getenv("CLOUDFLARE_SANDBOX_BASE_URL")
         api_token = os.getenv("CLOUDFLARE_API_TOKEN")
         if base_url and api_token:
@@ -104,7 +115,7 @@ class Sandbox:
                         "account_id": os.getenv("CLOUDFLARE_ACCOUNT_ID"),
                     },
                 )
-                print("✓ Registered Cloudflare provider")
+                print("✓ Registered Cloudflare provider (experimental)")
             except Exception:
                 pass
 

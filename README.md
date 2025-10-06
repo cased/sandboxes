@@ -40,7 +40,7 @@ from sandboxes import run
 async def main():
     # Creates a temporary sandbox, runs the command, then destroys the sandbox
     result = await run("echo 'Hello from sandbox!'")
-    print(result.stdout)  # "Hello from sandbox!"
+    print(result.stdout)
 
     # Behind the scenes, run() does this:
     # 1. Auto-detects available providers (e.g., E2B, Modal, Daytona)
@@ -153,6 +153,40 @@ async def main():
     result = await run("python script.py")                     # Auto-selects
 
 asyncio.run(main())
+```
+
+### Custom Images and Templates
+
+```python
+import asyncio
+from sandboxes import Sandbox, SandboxConfig
+from sandboxes.providers import ModalProvider, E2BProvider, DaytonaProvider
+
+async def main():
+    # High-level API - works with any provider
+    sandbox = await Sandbox.create(image="python:3.12-slim")
+
+    # Or with specific providers
+    modal_provider = ModalProvider()
+    e2b_provider = E2BProvider()
+    daytona_provider = DaytonaProvider()
+
+    # Modal: Use custom Docker images
+    config = SandboxConfig(image="python:3.12-slim")
+    sandbox = await modal_provider.create_sandbox(config)
+
+    # E2B: Use templates (base, code-interpreter, or custom)
+    config = SandboxConfig(image="code-interpreter")
+    sandbox = await e2b_provider.create_sandbox(config)
+
+    # Daytona: Use Docker images or snapshots
+    config = SandboxConfig(image="daytonaio/ai-test:0.2.3")
+    sandbox = await daytona_provider.create_sandbox(config)
+
+asyncio.run(main())
+
+# Via CLI
+# sandboxes run "python --version" --image python:3.12-alpine
 ```
 
 ## Command Line Interface
@@ -332,25 +366,38 @@ asyncio.run(main())
 
 #### How Auto-Detection Works
 
-When you call `Sandbox.create()` or `run()`, the library:
+When you call `Sandbox.create()` or `run()`, the library checks for providers in this priority order:
 
-1. **Checks for E2B**: Looks for `E2B_API_KEY` environment variable
-2. **Checks for Modal**: Looks for `~/.modal.toml` file or `MODAL_TOKEN_ID` env var
-3. **Checks for Daytona**: Looks for `DAYTONA_API_KEY` environment variable
-4. **Checks for Cloudflare** *(experimental)*: Looks for both `CLOUDFLARE_SANDBOX_BASE_URL` and `CLOUDFLARE_API_TOKEN`
+1. **Daytona** - Looks for `DAYTONA_API_KEY`
+2. **E2B** - Looks for `E2B_API_KEY`
+3. **Modal** - Looks for `~/.modal.toml` or `MODAL_TOKEN_ID`
+4. **Cloudflare** *(experimental)* - Looks for `CLOUDFLARE_SANDBOX_BASE_URL` + `CLOUDFLARE_API_TOKEN`
 
-The first provider with valid credentials is used. Cloudflare is experimental and requires deploying your own Worker. You can see which providers are detected:
+**The first provider with valid credentials becomes the default.** Cloudflare requires deploying your own Worker.
+
+#### Customizing the Default Provider
+
+You can override the auto-detected default:
 
 ```python
 from sandboxes import Sandbox
 
-# Force detection
-Sandbox._ensure_manager()
+# Option 1: Set default provider explicitly
+Sandbox.configure(default_provider="modal")
 
-# Check what's available
-if Sandbox._manager:
-    print(f"Available providers: {list(Sandbox._manager.providers.keys())}")
-    print(f"Default provider: {Sandbox._manager.default_provider}")
+# Option 2: Specify provider per call
+sandbox = await Sandbox.create(provider="e2b")
+
+# Option 3: Use fallback chain
+sandbox = await Sandbox.create(
+    provider="daytona",
+    fallback=["e2b", "modal"]
+)
+
+# Check which providers are available
+Sandbox._ensure_manager()
+print(f"Available: {list(Sandbox._manager.providers.keys())}")
+print(f"Default: {Sandbox._manager.default_provider}")
 ```
 
 ### Manual Provider Configuration
@@ -413,36 +460,6 @@ Each provider requires appropriate authentication:
 > 2. Provision a Workers Paid plan and enable Containers + Docker Hub registry for your account.
 > 3. Define a secret (e.g. `SANDBOX_API_TOKEN`) in Wrangler and reuse the same value for `CLOUDFLARE_API_TOKEN` locally.
 > 4. Set `CLOUDFLARE_SANDBOX_BASE_URL` to the Worker URL (e.g. `https://cf-sandbox.your-subdomain.workers.dev`).
-
-### Custom Images and Templates
-
-```python
-import asyncio
-from sandboxes import SandboxConfig
-from sandboxes.providers import ModalProvider, E2BProvider, DaytonaProvider
-
-async def main():
-    modal_provider = ModalProvider()
-    e2b_provider = E2BProvider()
-    daytona_provider = DaytonaProvider()
-
-    # Use custom Docker images with Modal
-    config = SandboxConfig(image="python:3.12-slim")
-    sandbox = await modal_provider.create_sandbox(config)
-
-    # Use E2B templates
-    config = SandboxConfig(image="your-template-id")
-    sandbox = await e2b_provider.create_sandbox(config)
-
-    # Use Daytona snapshots
-    config = SandboxConfig(image="your-snapshot-name")
-    sandbox = await daytona_provider.create_sandbox(config)
-
-asyncio.run(main())
-
-# Via CLI
-# sandboxes run "python --version" --image python:3.12-alpine
-```
 
 ## Advanced Usage
 
