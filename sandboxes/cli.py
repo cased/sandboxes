@@ -40,7 +40,7 @@ def get_provider(name: str):
 @click.group()
 @click.version_option(version="0.2.0", prog_name="cased-sandboxes")
 def cli():
-    """🧪 Universal AI code execution sandboxes."""
+    """Universal AI code execution sandboxes."""
     pass
 
 
