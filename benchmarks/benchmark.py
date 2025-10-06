@@ -97,8 +97,8 @@ class SandboxBenchmark:
             image = "daytonaio/ai-test:0.2.3" if provider_name in ["daytona", "e2b"] else None
             if provider_name == "e2b":
                 # E2B uses template ID (template built from daytonaio/ai-test:0.2.3)
-                # To build your own: cd e2b-daytona-benchmark && e2b template build
-                # Then update this ID with the one from e2b-daytona-benchmark/e2b.toml
+                # To build your own: cd benchmarks/e2b-daytona-benchmark && e2b template build
+                # Then update this ID with the one from benchmarks/e2b-daytona-benchmark/e2b.toml
                 image = "5x6hvr4zwye07thwhpkd"
 
             config = SandboxConfig(
@@ -148,7 +148,7 @@ class SandboxBenchmark:
         image = "daytonaio/ai-test:0.2.3" if provider_name in ["daytona", "e2b"] else None
         if provider_name == "e2b":
             # E2B uses template ID (template built from daytonaio/ai-test:0.2.3)
-            # See e2b-daytona-benchmark/README.md for building your own
+            # See benchmarks/e2b-daytona-benchmark/README.md for building your own
             image = "5x6hvr4zwye07thwhpkd"
 
         # Create one sandbox for all iterations
@@ -216,7 +216,7 @@ class SandboxBenchmark:
         image = "daytonaio/ai-test:0.2.3" if provider_name in ["daytona", "e2b"] else None
         if provider_name == "e2b":
             # E2B uses template ID (template built from daytonaio/ai-test:0.2.3)
-            # See e2b-daytona-benchmark/README.md for building your own
+            # See benchmarks/e2b-daytona-benchmark/README.md for building your own
             image = "5x6hvr4zwye07thwhpkd"
 
         labels = {"benchmark": "reuse", "session": "test123"}

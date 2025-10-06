@@ -7,7 +7,7 @@ This directory contains an E2B template built from the Daytona AI test Docker im
 To build this template in your own E2B account:
 
 ```bash
-cd e2b-daytona-benchmark
+cd benchmarks/e2b-daytona-benchmark
 e2b template build
 ```
 

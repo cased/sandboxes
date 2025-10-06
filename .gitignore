@@ -67,5 +67,5 @@ tmp/
 temp/
 
 # E2B templates (user-specific IDs)
-e2b-daytona-benchmark/e2b.toml
+benchmarks/e2b-daytona-benchmark/e2b.toml
 .e2b-templates/
