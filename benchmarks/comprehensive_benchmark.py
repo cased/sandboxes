@@ -34,8 +34,9 @@ except ImportError:
 
 from sandboxes import run
 
-# Standard image for apples-to-apples comparison
+# Standard image for apples-to-apples comparison (Modal/Daytona)
 # This image includes Python 3.13, numpy, requests, and many AI/ML packages
+# E2B uses their "python" template (doesn't support arbitrary Docker images)
 STANDARD_IMAGE = "daytonaio/ai-test:0.2.3"
 
 
@@ -122,11 +123,15 @@ async def benchmark_provider(
         try:
             start = time.time()
 
-            # Use standard image for Modal and Daytona for fair comparison
-            # E2B uses the base template (standard Linux environment)
+            # Use comparable images for fair comparison
             kwargs = {"provider": provider_name}
-            if use_standard_image and provider_name in ["modal", "daytona"]:
-                kwargs["image"] = STANDARD_IMAGE
+            if use_standard_image:
+                if provider_name == "e2b":
+                    # E2B uses templates, not Docker images - use their Python template
+                    kwargs["image"] = "python"
+                elif provider_name in ["modal", "daytona"]:
+                    # Modal and Daytona can use Docker Hub images
+                    kwargs["image"] = STANDARD_IMAGE
 
             result = await run(command, **kwargs)
             duration = (time.time() - start) * 1000  # Convert to ms
@@ -169,8 +174,8 @@ async def run_benchmarks(providers: List[str], use_standard_image: bool = True):
     print(f"Testing providers: {', '.join(providers)}")
     print(f"Total tests: {len(TESTS)}")
     if use_standard_image:
-        print(f"Standard image (Modal/Daytona): {STANDARD_IMAGE}")
-        print("E2B: base template (standard Linux environment)")
+        print(f"Modal/Daytona: {STANDARD_IMAGE}")
+        print("E2B: python template (official E2B Python environment)")
     print("=" * 80 + "\n")
 
     all_results = []
