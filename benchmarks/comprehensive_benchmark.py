@@ -36,7 +36,8 @@ from sandboxes import run
 
 # Standard image for apples-to-apples comparison (Modal/Daytona)
 # This image includes Python 3.13, numpy, requests, and many AI/ML packages
-# E2B uses their "python" template (doesn't support arbitrary Docker images)
+# E2B uses their "code-interpreter" template (doesn't support arbitrary Docker images)
+# code-interpreter includes Python, npm, Jupyter, numpy, pandas, matplotlib, etc.
 STANDARD_IMAGE = "daytonaio/ai-test:0.2.3"
 
 
@@ -127,8 +128,9 @@ async def benchmark_provider(
             kwargs = {"provider": provider_name}
             if use_standard_image:
                 if provider_name == "e2b":
-                    # E2B uses templates, not Docker images - use their Python template
-                    kwargs["image"] = "python"
+                    # E2B uses templates, not Docker images - use their code-interpreter template
+                    # Has Python, npm, Jupyter, and common ML packages (numpy, pandas, etc.)
+                    kwargs["image"] = "code-interpreter"
                 elif provider_name in ["modal", "daytona"]:
                     # Modal and Daytona can use Docker Hub images
                     kwargs["image"] = STANDARD_IMAGE
@@ -175,7 +177,7 @@ async def run_benchmarks(providers: List[str], use_standard_image: bool = True):
     print(f"Total tests: {len(TESTS)}")
     if use_standard_image:
         print(f"Modal/Daytona: {STANDARD_IMAGE}")
-        print("E2B: python template (official E2B Python environment)")
+        print("E2B: code-interpreter template (Python, npm, Jupyter, ML packages)")
     print("=" * 80 + "\n")
 
     all_results = []
