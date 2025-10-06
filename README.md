@@ -340,6 +340,8 @@ curl -s https://example.com/script.py | sandboxes run --lang python
 
 ## Provider Configuration
 
+You'll need API keys from one of the supported providers.
+
 ### Automatic Configuration
 
 The library automatically detects available providers from environment variables:
