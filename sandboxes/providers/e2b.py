@@ -61,9 +61,7 @@ class E2BProvider(SandboxProvider):
 
     async def _create_e2b_sandbox(self, template_id=None, env_vars=None):
         """Create E2B sandbox asynchronously."""
-        return await E2BSandbox.create(
-            template=template_id, envs=env_vars, api_key=self.api_key
-        )
+        return await E2BSandbox.create(template=template_id, envs=env_vars, api_key=self.api_key)
 
     def _to_sandbox(self, e2b_sandbox, metadata: dict[str, Any]) -> Sandbox:
         """Convert E2B sandbox to standard Sandbox."""
