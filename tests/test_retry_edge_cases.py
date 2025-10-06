@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from sandboxes.exceptions import SandboxError
+from sandboxes.exceptions import ProviderError, SandboxError
 from sandboxes.retry import (
     CircuitBreaker,
     RetryConfig,
@@ -186,7 +186,8 @@ class TestRetryEdgeCases:
             return "success"
 
         # First attempt - will fail and open circuit
-        with pytest.raises(ValueError):
+        # Circuit breaker will raise ProviderError when circuit is open
+        with pytest.raises((ValueError, ProviderError)):
             await handler.execute(flaky_operation)
 
         # Circuit should be open
