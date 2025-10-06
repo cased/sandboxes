@@ -207,8 +207,8 @@ async def test_provider_image_patterns(provider_class, provider_name: str):
             primary_image = None  # Default template
             test_images = [None]  # Only default for now
         elif provider_name == "Daytona":
-            primary_image = "command-execution-env"
-            test_images = ["command-execution-env"]  # Limited to available snapshots
+            primary_image = "daytonaio/ai-test:0.2.3"
+            test_images = ["daytonaio/ai-test:0.2.3"]
         else:
             return None
 

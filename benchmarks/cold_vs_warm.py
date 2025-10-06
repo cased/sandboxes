@@ -178,7 +178,7 @@ async def test_provider_warmup_patterns(provider_class, provider_name: str):
         if provider_name == "Modal":
             config.image = "python:3.11-slim"
         elif provider_name == "Daytona":
-            config.image = "command-execution-env"
+            config.image = "daytonaio/ai-test:0.2.3"
 
         # Test 1: Cold startup
         cold_results = await test_cold_startup(provider, provider_name, config)

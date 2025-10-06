@@ -37,6 +37,7 @@ htmlcov/
 benchmarks/benchmark_results_*.json
 benchmarks/*.json
 benchmarks/*.csv
+benchmarks/*.txt
 benchmark_results_*.json
 *.benchmark.json
 
