@@ -26,7 +26,7 @@ or install with your preferred Python package manager and use the CLI
 for any language, e.g.,:
 
 ```bash
-uv pip install sandboxes
+uv pip install cased-sandboxes
 ```
 
 ## Quick Start
