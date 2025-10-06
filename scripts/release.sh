@@ -99,8 +99,8 @@ echo "All required packages are installed."
 echo ""
 echo "Running tests to ensure everything works..."
 if command -v pytest &> /dev/null; then
-    echo "Running pytest..."
-    if ! pytest tests/ -v --tb=short; then
+    echo "Running pytest (excluding integration tests)..."
+    if ! pytest tests/ -v --tb=short -m "not integration"; then
         echo "Error: Tests failed. Please fix failing tests before releasing."
         exit 1
     fi

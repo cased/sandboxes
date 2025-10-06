@@ -136,6 +136,14 @@ addopts = [
 ]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: marks tests as integration tests requiring external APIs (deselect with '-m \"not integration\"')",
+    "e2b: marks tests that require E2B API",
+    "modal: marks tests that require Modal API",
+    "daytona: marks tests that require Daytona API",
+    "cloudflare: marks tests that require Cloudflare API",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
 
 [tool.coverage.run]
 branch = true
