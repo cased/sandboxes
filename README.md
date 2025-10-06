@@ -13,6 +13,7 @@ Universal library for AI code execution sandboxes.
 - **Experimental**: Cloudflare (requires self-hosted Worker deployment)
 
 Write your code once and switch between providers with a single line change, or let the library automatically select the best available option.
+Includes a Python API plus full-featured CLI for use from any runtime.
 
 ## Installation
 
