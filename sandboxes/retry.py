@@ -534,7 +534,7 @@ async def with_timeout(coro: Any, timeout: float, error_message: str | None = No
     """
     try:
         return await asyncio.wait_for(coro, timeout=timeout)
-    except asyncio.TimeoutError as e:
+    except TimeoutError as e:
         message = error_message or f"Operation timed out after {timeout} seconds"
         raise SandboxTimeoutError(message) from e
 

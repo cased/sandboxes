@@ -184,7 +184,7 @@ class SandboxPool:
                         eviction_entry = None
                         continue
 
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             self._stats["timeouts"] += 1
             raise SandboxQuotaError(f"Pool limit reached: {self.config.max_total}") from e
         except SandboxQuotaError:

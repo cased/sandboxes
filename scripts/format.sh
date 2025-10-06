@@ -73,7 +73,7 @@ fi
 
 # Run MyPy type checker (no auto-fix available)
 echo -e "${YELLOW}Running MyPy (type checker)...${NC}"
-if mypy . --python-version 3.9; then
+if mypy . --python-version 3.11; then
     echo -e "${GREEN}✓ MyPy passed${NC}"
 else
     echo -e "${YELLOW}⚠ MyPy had warnings (manual fixes needed)${NC}"
