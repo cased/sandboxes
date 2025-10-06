@@ -7,8 +7,6 @@ including p50, p95, and p99 percentiles.
 
 Outputs comprehensive results to benchmarks/results.txt
 """
-import asyncio
-import json
 import subprocess
 import sys
 import time
@@ -200,11 +198,13 @@ def main():
         if successful_runs:
             stats = bench_results["stats"]
             print(f"   Summary: {stats['success_count']}/{bench_config['runs']} successful")
-            print(f"   Duration: {stats['mean_duration']:.1f}s avg, "
-                  f"{stats['median_duration']:.1f}s median, "
-                  f"±{stats['stddev']:.1f}s")
+            print(
+                f"   Duration: {stats['mean_duration']:.1f}s avg, "
+                f"{stats['median_duration']:.1f}s median, "
+                f"±{stats['stddev']:.1f}s"
+            )
         else:
-            print(f"   ✗ All runs failed")
+            print("   ✗ All runs failed")
 
     overall_duration = time.time() - overall_start
 
@@ -232,12 +232,16 @@ def main():
         for result in all_results:
             stats = result["stats"]
             f.write(f"{result['name']}\n")
-            f.write(f"  Success Rate: {stats['success_count']}/{stats['success_count'] + stats['failure_count']}\n")
-            if stats['success_count'] > 0:
-                f.write(f"  Duration: {stats['mean_duration']:.2f}s avg "
-                       f"(p50={stats['percentiles']['p50']:.2f}s, "
-                       f"p95={stats['percentiles']['p95']:.2f}s, "
-                       f"p99={stats['percentiles']['p99']:.2f}s)\n")
+            f.write(
+                f"  Success Rate: {stats['success_count']}/{stats['success_count'] + stats['failure_count']}\n"
+            )
+            if stats["success_count"] > 0:
+                f.write(
+                    f"  Duration: {stats['mean_duration']:.2f}s avg "
+                    f"(p50={stats['percentiles']['p50']:.2f}s, "
+                    f"p95={stats['percentiles']['p95']:.2f}s, "
+                    f"p99={stats['percentiles']['p99']:.2f}s)\n"
+                )
             f.write("\n")
 
         f.write("\n" + "=" * 80 + "\n\n")
@@ -255,8 +259,10 @@ def main():
             stats = result["stats"]
             f.write("STATISTICS\n")
             f.write("-" * 40 + "\n")
-            f.write(f"Success: {stats['success_count']}/{stats['success_count'] + stats['failure_count']}\n")
-            if stats['success_count'] > 0:
+            f.write(
+                f"Success: {stats['success_count']}/{stats['success_count'] + stats['failure_count']}\n"
+            )
+            if stats["success_count"] > 0:
                 f.write(f"Mean:    {stats['mean_duration']:.3f}s\n")
                 f.write(f"Median:  {stats['median_duration']:.3f}s\n")
                 f.write(f"Std Dev: {stats['stddev']:.3f}s\n")
@@ -315,11 +321,13 @@ def main():
         f.write("Benchmark Performance (by median duration):\n")
         sorted_results = sorted(
             [r for r in all_results if r["stats"]["success_count"] > 0],
-            key=lambda x: x["stats"]["median_duration"]
+            key=lambda x: x["stats"]["median_duration"],
         )
         for i, r in enumerate(sorted_results, 1):
-            f.write(f"  {i}. {r['name']}: {r['stats']['median_duration']:.2f}s "
-                   f"(p95={r['stats']['percentiles']['p95']:.2f}s)\n")
+            f.write(
+                f"  {i}. {r['name']}: {r['stats']['median_duration']:.2f}s "
+                f"(p95={r['stats']['percentiles']['p95']:.2f}s)\n"
+            )
 
     print(f"\n✅ Report saved to: {output_path}")
     print(f"   Total duration: {overall_duration:.1f}s ({overall_duration/60:.1f}m)")

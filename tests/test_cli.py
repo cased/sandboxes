@@ -218,7 +218,7 @@ class TestCLIDepsFlag:
         test_file = tmp_path / "test.go"
         test_file.write_text("package main\nfunc main() {}")
 
-        result = self.runner.invoke(
+        self.runner.invoke(
             cli,
             ["run", "--file", str(test_file), "--lang", "go", "--deps", "--provider", "modal"],
         )
@@ -235,7 +235,7 @@ class TestCLIDepsFlag:
         test_file = tmp_path / "test.go"
         test_file.write_text("package main\nfunc main() {}")
 
-        result = self.runner.invoke(
+        self.runner.invoke(
             cli,
             ["run", "--file", str(test_file), "--lang", "go", "--no-deps", "--provider", "modal"],
         )

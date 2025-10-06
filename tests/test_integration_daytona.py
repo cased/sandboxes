@@ -306,9 +306,7 @@ print(f'Sum of {x} and {y} is {x + y}')
     @pytest.mark.slow
     async def test_long_running_command(self, daytona_provider):
         """Test long-running command execution."""
-        config = SandboxConfig(
-            timeout_seconds=30, image="daytonaio/ai-test:0.2.3"
-        )
+        config = SandboxConfig(timeout_seconds=30, image="daytonaio/ai-test:0.2.3")
         sandbox = await daytona_provider.create_sandbox(config)
 
         try:

@@ -251,8 +251,8 @@ def generate_report(results: List[Dict[str, Any]]):
                 durations = [run["duration"] for run in successful_runs]
                 avg = mean(durations)
                 std = stdev(durations) if len(durations) > 1 else 0
-                min_time = min(durations)
-                max_time = max(durations)
+                min(durations)
+                max(durations)
                 percs = calculate_percentiles(durations)
 
                 table_data.append(

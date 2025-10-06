@@ -117,9 +117,7 @@ async def validate_daytona():
         print(f"✅ DAYTONA_API_KEY found: {api_key[:8]}...")
 
         provider = DaytonaProvider(api_key=api_key)
-        config = SandboxConfig(
-            labels={"test": "validation"}, image="daytonaio/ai-test:0.2.3"
-        )
+        config = SandboxConfig(labels={"test": "validation"}, image="daytonaio/ai-test:0.2.3")
 
         # Create sandbox
         print("\n🚀 Creating Daytona sandbox...")
