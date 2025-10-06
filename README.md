@@ -12,7 +12,7 @@ Universal library for AI code execution sandboxes.
 - **Current providers**: E2B, Modal, Daytona
 - **Experimental**: Cloudflare (requires self-hosted Worker deployment)
 
-Write your code once and switch between providers with a single line change, or let the library automatically select the best available option.
+Write your code once and switch between providers with a single line change, or let the library automatically select a provider.
 Includes a Python API plus full-featured CLI for use from any runtime.
 
 ## Installation
@@ -134,7 +134,7 @@ async def main():
     print(f"Using: {sandbox._provider_name}")
 
     # Or specify directly with run()
-    result = await run("python script.py", provider="modal")  # Runs on Modal
+    result = await run("bash my-script.sh", provider="modal")
 
 asyncio.run(main())
 ```
@@ -193,6 +193,7 @@ await sandbox.destroy()
 ## Command Line Interface
 
 `sandboxes` includes a powerful CLI for running code in **any language** from your terminal. Execute TypeScript, Go, Rust, Python, or any other language in isolated sandboxes.
+You can call the CLI from any language, or write a wrapper for it.
 
 ### Quick Start
 
@@ -249,7 +250,7 @@ sandboxes run --file script.py --keep
 sandboxes run --file script.sh -t 600
 ```
 
-Supported languages: `python`, `node/javascript`, `typescript`, `go`, `rust`, `bash/sh`
+Supported languages with auto-detect: `python`, `node/javascript`, `typescript`, `go`, `rust`, `bash/sh`
 
 #### `list` - List Sandboxes
 
