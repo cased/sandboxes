@@ -157,7 +157,7 @@ async def main():
 asyncio.run(main())
 
 # Via CLI
-# sandboxes run "python --version" --image python:3.12-alpine
+# sandboxes run "python --version" --image python:3.12-slim
 ```
 
 ## API Reference

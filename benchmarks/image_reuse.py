@@ -198,7 +198,7 @@ async def test_provider_image_patterns(provider_class, provider_name: str):
             test_images = [
                 "python:3.11-slim",
                 "python:3.12-slim",
-                "python:3.10-alpine",
+                "python:3.10-slim",
                 "ubuntu:22.04",
             ]
         elif provider_name == "E2B":

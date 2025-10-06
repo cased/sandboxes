@@ -265,9 +265,10 @@ class ModalProvider(SandboxProvider):
             start_time = time.time()
 
             # Modal's exec returns a process object
+            # Use 'sh' instead of 'bash' for alpine compatibility
             process = await loop.run_in_executor(
                 self._executor,
-                lambda: modal_sandbox.exec("bash", "-c", command, timeout=timeout or self.timeout),
+                lambda: modal_sandbox.exec("sh", "-c", command, timeout=timeout or self.timeout),
             )
 
             # Get output
