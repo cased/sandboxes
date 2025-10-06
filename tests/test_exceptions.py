@@ -74,8 +74,8 @@ class TestExceptions:
         try:
             try:
                 raise ValueError("Original error")
-            except ValueError:
-                raise SandboxError("Wrapper error")
+            except ValueError as err:
+                raise SandboxError("Wrapper error") from err
         except SandboxError as e:
             assert e.__context__ is not None
             assert isinstance(e.__context__, ValueError)

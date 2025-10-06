@@ -23,7 +23,7 @@ async def main():
     try:
         providers.append(ModalProvider())
         print("✅ Modal provider available")
-    except:
+    except Exception:
         print("❌ Modal not configured")
 
     if os.getenv("DAYTONA_API_KEY"):

@@ -186,7 +186,7 @@ class TestRetryEdgeCases:
             return "success"
 
         # First attempt - will fail and open circuit
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             await handler.execute(flaky_operation)
 
         # Circuit should be open
@@ -309,7 +309,7 @@ class TestRetryEdgeCases:
                 else:
                     await breaker.call(AsyncMock(return_value="success"))
                     successes += 1
-            except:
+            except Exception:
                 pass
 
         # Breaker should track internal metrics

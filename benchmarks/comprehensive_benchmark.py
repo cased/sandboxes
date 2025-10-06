@@ -311,7 +311,7 @@ def generate_report(results: List[Dict[str, Any]]):
 
     # Count wins per provider
     wins = {}
-    for test_name, test_results in by_test.items():
+    for _test_name, test_results in by_test.items():
         valid_results = [r for r in test_results if any(run["success"] for run in r["runs"])]
         if valid_results:
             fastest = min(

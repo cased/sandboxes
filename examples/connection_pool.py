@@ -18,7 +18,7 @@ async def main():
     # Initialize provider
     try:
         provider = ModalProvider()
-    except:
+    except Exception:
         print("❌ Modal not configured")
         return
 

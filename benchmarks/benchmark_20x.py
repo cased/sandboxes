@@ -32,7 +32,7 @@ async def verify_and_benchmark(provider_class, name: str, runs: int = 20):
     try:
         initial_sandboxes = await provider.list_sandboxes()
         print(f"   Existing sandboxes: {len(initial_sandboxes)}")
-    except:
+    except Exception:
         initial_sandboxes = []
         print("   Could not list sandboxes")
 
@@ -107,7 +107,7 @@ async def verify_and_benchmark(provider_class, name: str, runs: int = 20):
         final_sandboxes = await provider.list_sandboxes()
         print(f"   Final sandbox count: {len(final_sandboxes)}")
         print(f"   Net change: {len(final_sandboxes) - len(initial_sandboxes)}")
-    except:
+    except Exception:
         print("   Could not verify final count")
 
     if not create_times:
