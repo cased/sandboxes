@@ -65,7 +65,7 @@ class TestCLICommands:
         """Test CLI version command."""
         result = self.runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.5" in result.output
+        assert "0.2.0" in result.output
 
     @patch("sandboxes.cli.asyncio.run")
     def test_run_command_basic(self, mock_async_run):
