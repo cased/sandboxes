@@ -19,7 +19,7 @@ class TestDaytonaIntegration:
         """Test creating and destroying a real Daytona sandbox."""
         config = SandboxConfig(
             labels={"test": "integration", "provider": "daytona"},
-            provider_config={"snapshot": "command-execution-env"},
+            image="daytonaio/ai-test:0.2.3",
         )
 
         # Create sandbox
@@ -50,7 +50,7 @@ class TestDaytonaIntegration:
     @pytest.mark.asyncio
     async def test_execute_shell_commands(self, daytona_provider):
         """Test executing shell commands in Daytona sandbox."""
-        config = SandboxConfig(provider_config={"snapshot": "command-execution-env"})
+        config = SandboxConfig(image="daytonaio/ai-test:0.2.3")
         sandbox = await daytona_provider.create_sandbox(config)
 
         try:
@@ -84,7 +84,7 @@ class TestDaytonaIntegration:
     @pytest.mark.asyncio
     async def test_execute_python_scripts(self, daytona_provider):
         """Test executing Python scripts in Daytona sandbox."""
-        config = SandboxConfig(provider_config={"snapshot": "command-execution-env"})
+        config = SandboxConfig(image="daytonaio/ai-test:0.2.3")
         sandbox = await daytona_provider.create_sandbox(config)
 
         try:
@@ -126,7 +126,7 @@ print(f'Sum of {x} and {y} is {x + y}')
         """Test environment variable handling in Daytona."""
         config = SandboxConfig(
             env_vars={"INITIAL_VAR": "initial_value"},
-            provider_config={"snapshot": "command-execution-env"},
+            image="daytonaio/ai-test:0.2.3",
         )
         sandbox = await daytona_provider.create_sandbox(config)
 
@@ -161,7 +161,7 @@ print(f'Sum of {x} and {y} is {x + y}')
         """Test Daytona's smart sandbox reuse based on labels."""
         config = SandboxConfig(
             labels={"session": "test-reuse-daytona", "user": "pytest", "purpose": "testing"},
-            provider_config={"snapshot": "command-execution-env"},
+            image="daytonaio/ai-test:0.2.3",
         )
 
         sandbox1 = None
@@ -201,7 +201,7 @@ print(f'Sum of {x} and {y} is {x + y}')
     @pytest.mark.asyncio
     async def test_error_handling(self, daytona_provider):
         """Test error handling in Daytona sandbox."""
-        config = SandboxConfig(provider_config={"snapshot": "command-execution-env"})
+        config = SandboxConfig(image="daytonaio/ai-test:0.2.3")
         sandbox = await daytona_provider.create_sandbox(config)
 
         try:
@@ -228,7 +228,7 @@ print(f'Sum of {x} and {y} is {x + y}')
     @pytest.mark.asyncio
     async def test_concurrent_commands(self, daytona_provider):
         """Test executing commands concurrently in same sandbox."""
-        config = SandboxConfig(provider_config={"snapshot": "command-execution-env"})
+        config = SandboxConfig(image="daytonaio/ai-test:0.2.3")
         sandbox = await daytona_provider.create_sandbox(config)
 
         try:
@@ -264,7 +264,7 @@ print(f'Sum of {x} and {y} is {x + y}')
         configs = [
             SandboxConfig(
                 labels={"sandbox": f"daytona-{i}"},
-                provider_config={"snapshot": "command-execution-env"},
+                image="daytonaio/ai-test:0.2.3",
             )
             for i in range(3)
         ]
@@ -307,7 +307,7 @@ print(f'Sum of {x} and {y} is {x + y}')
     async def test_long_running_command(self, daytona_provider):
         """Test long-running command execution."""
         config = SandboxConfig(
-            timeout_seconds=30, provider_config={"snapshot": "command-execution-env"}
+            timeout_seconds=30, image="daytonaio/ai-test:0.2.3"
         )
         sandbox = await daytona_provider.create_sandbox(config)
 
@@ -332,7 +332,7 @@ print(f'Sum of {x} and {y} is {x + y}')
             "destroy_time": 0,
         }
 
-        config = SandboxConfig(provider_config={"snapshot": "command-execution-env"})
+        config = SandboxConfig(image="daytonaio/ai-test:0.2.3")
 
         # Measure sandbox creation
         start = time.time()

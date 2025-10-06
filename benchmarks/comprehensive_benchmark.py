@@ -18,7 +18,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from statistics import mean, stdev
+from statistics import mean, median, quantiles, stdev
 from typing import Any, Dict, List
 
 # Add parent directory to path
@@ -34,8 +34,10 @@ except ImportError:
 
 from sandboxes import run
 
-# Standard image for apples-to-apples comparison
+# Standard image for apples-to-apples comparison (Modal/Daytona)
 # This image includes Python 3.13, numpy, requests, and many AI/ML packages
+# E2B uses their "code-interpreter" template (doesn't support arbitrary Docker images)
+# code-interpreter includes Python, npm, Jupyter, numpy, pandas, matplotlib, etc.
 STANDARD_IMAGE = "daytonaio/ai-test:0.2.3"
 
 
@@ -122,11 +124,16 @@ async def benchmark_provider(
         try:
             start = time.time()
 
-            # Use standard image for Modal and Daytona for fair comparison
-            # E2B uses the base template (standard Linux environment)
+            # Use comparable images for fair comparison
             kwargs = {"provider": provider_name}
-            if use_standard_image and provider_name in ["modal", "daytona"]:
-                kwargs["image"] = STANDARD_IMAGE
+            if use_standard_image:
+                if provider_name == "e2b":
+                    # E2B uses templates, not Docker images - use their code-interpreter template
+                    # Has Python, npm, Jupyter, and common ML packages (numpy, pandas, etc.)
+                    kwargs["image"] = "code-interpreter"
+                elif provider_name in ["modal", "daytona"]:
+                    # Modal and Daytona can use Docker Hub images
+                    kwargs["image"] = STANDARD_IMAGE
 
             result = await run(command, **kwargs)
             duration = (time.time() - start) * 1000  # Convert to ms
@@ -169,8 +176,8 @@ async def run_benchmarks(providers: List[str], use_standard_image: bool = True):
     print(f"Testing providers: {', '.join(providers)}")
     print(f"Total tests: {len(TESTS)}")
     if use_standard_image:
-        print(f"Standard image (Modal/Daytona): {STANDARD_IMAGE}")
-        print("E2B: base template (standard Linux environment)")
+        print(f"Modal/Daytona: {STANDARD_IMAGE}")
+        print("E2B: code-interpreter template (Python, npm, Jupyter, ML packages)")
     print("=" * 80 + "\n")
 
     all_results = []
@@ -192,6 +199,29 @@ async def run_benchmarks(providers: List[str], use_standard_image: bool = True):
             all_results.append(result)
 
     return all_results
+
+
+def calculate_percentiles(data: List[float]) -> Dict[str, float]:
+    """Calculate p50, p95, p99 percentiles."""
+    if not data:
+        return {"p50": 0, "p95": 0, "p99": 0}
+
+    if len(data) == 1:
+        return {"p50": data[0], "p95": data[0], "p99": data[0]}
+
+    try:
+        percs = quantiles(data, n=100)
+        return {
+            "p50": median(data),
+            "p95": percs[94] if len(percs) > 94 else max(data),
+            "p99": percs[98] if len(percs) > 98 else max(data),
+        }
+    except Exception:
+        return {
+            "p50": median(data),
+            "p95": max(data),
+            "p99": max(data),
+        }
 
 
 def generate_report(results: List[Dict[str, Any]]):
@@ -223,14 +253,16 @@ def generate_report(results: List[Dict[str, Any]]):
                 std = stdev(durations) if len(durations) > 1 else 0
                 min_time = min(durations)
                 max_time = max(durations)
+                percs = calculate_percentiles(durations)
 
                 table_data.append(
                     [
                         r["provider"],
                         f"{avg:.2f}ms",
                         f"±{std:.2f}ms",
-                        f"{min_time:.2f}ms",
-                        f"{max_time:.2f}ms",
+                        f"{percs['p50']:.2f}ms",
+                        f"{percs['p95']:.2f}ms",
+                        f"{percs['p99']:.2f}ms",
                         f"{len(successful_runs)}/{len(r['runs'])}",
                     ]
                 )
@@ -242,23 +274,24 @@ def generate_report(results: List[Dict[str, Any]]):
                         "-",
                         "-",
                         "-",
+                        "-",
                         f"0/{len(r['runs'])}",
                     ]
                 )
 
-        headers = ["Provider", "Avg Time", "Std Dev", "Min", "Max", "Success"]
+        headers = ["Provider", "Avg Time", "Std Dev", "P50", "P95", "P99", "Success"]
 
         if HAS_TABULATE:
             print(tabulate(table_data, headers=headers, tablefmt="grid"))
         else:
             # Simple fallback formatting
             print(
-                f"{headers[0]:<12} {headers[1]:<12} {headers[2]:<12} {headers[3]:<12} {headers[4]:<12} {headers[5]:<10}"
+                f"{headers[0]:<12} {headers[1]:<12} {headers[2]:<12} {headers[3]:<12} {headers[4]:<12} {headers[5]:<12} {headers[6]:<10}"
             )
-            print("-" * 80)
+            print("-" * 100)
             for row in table_data:
                 print(
-                    f"{row[0]:<12} {row[1]:<12} {row[2]:<12} {row[3]:<12} {row[4]:<12} {row[5]:<10}"
+                    f"{row[0]:<12} {row[1]:<12} {row[2]:<12} {row[3]:<12} {row[4]:<12} {row[5]:<12} {row[6]:<10}"
                 )
 
         # Show fastest provider

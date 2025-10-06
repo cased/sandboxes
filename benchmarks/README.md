@@ -105,39 +105,16 @@ All benchmarks auto-detect available providers based on environment variables:
 
 ## Standard Image
 
-For fair comparison, Modal and Daytona use the same base image:
-- **Image**: `daytonaio/ai-test:0.2.3`
-- **Contents**: Python 3.13, numpy, requests, anthropic, cohere, beautifulsoup4, and many AI/ML packages
-- **E2B**: Uses the `base` template (standard Linux environment with Python)
-  - Note: E2B supports custom templates via `config.image` or `config.provider_config["template"]`
-  - All providers execute shell commands uniformly
+For apples-to-apples comparison, benchmarks use comparable environments:
 
-## Interpreting Results
+- **Modal/Daytona**: `daytonaio/ai-test:0.2.3`
+  - Python 3.13, numpy, requests, anthropic, cohere, beautifulsoup4, and many AI/ML packages
+  - Both providers support arbitrary Docker images
 
-### Speed Rankings (Typical)
-1. **Daytona** - Fastest on most workloads (~1000ms avg)
-2. **E2B** - Very fast and consistent (~1200ms avg)
-3. **Modal** - Slowest but reliable (~2500ms avg)
-
-### When to Use Each Provider
-
-**Daytona:**
-- ✅ Best overall performance
-- ✅ Fastest package installation
-- ✅ Supports custom Docker images
-- ✅ Good for AI/ML workloads
-
-**E2B:**
-- ✅ Most consistent (low variance)
-- ✅ Fast and reliable
-- ✅ Supports custom templates
-- ✅ Good for production workloads
-
-**Modal:**
-- ✅ 100% reliable
-- ✅ Excellent for custom images
-- ✅ Good for long-running tasks
-- ❌ Slower startup time
+- **E2B**: `code-interpreter` template
+  - Python, npm, Jupyter, and common ML packages (numpy, pandas, matplotlib, etc.)
+  - E2B uses templates instead of Docker images
+  - Custom templates supported via `config.image` or `config.provider_config["template"]`
 
 ## Contributing
 

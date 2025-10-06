@@ -118,7 +118,7 @@ async def validate_daytona():
 
         provider = DaytonaProvider(api_key=api_key)
         config = SandboxConfig(
-            labels={"test": "validation"}, provider_config={"snapshot": "command-execution-env"}
+            labels={"test": "validation"}, image="daytonaio/ai-test:0.2.3"
         )
 
         # Create sandbox

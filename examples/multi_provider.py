@@ -69,7 +69,7 @@ async def main():
         elif provider.name == "e2b":
             config = SandboxConfig()  # Uses default template
         else:
-            config = SandboxConfig(image="command-execution-env")
+            config = SandboxConfig(image="daytonaio/ai-test:0.2.3")
 
         try:
             sandbox = await provider.create_sandbox(config)

@@ -30,32 +30,40 @@ for any language.
 ### The Simplest Way - One-Line Execution
 
 ```python
+import asyncio
 from sandboxes import run
 
-# Creates a temporary sandbox, runs the command, then destroys the sandbox
-result = await run("echo 'Hello from sandbox!'")
-print(result.stdout)  # "Hello from sandbox!"
+async def main():
+    # Creates a temporary sandbox, runs the command, then destroys the sandbox
+    result = await run("echo 'Hello from sandbox!'")
+    print(result.stdout)  # "Hello from sandbox!"
 
-# Behind the scenes, run() does this:
-# 1. Auto-detects available providers (e.g., E2B, Modal, Daytona)
-# 2. Creates a new sandbox with the first available provider
-# 3. Executes your command in that isolated environment
-# 4. Returns the result
-# 5. Automatically destroys the sandbox
+    # Behind the scenes, run() does this:
+    # 1. Auto-detects available providers (e.g., E2B, Modal, Daytona)
+    # 2. Creates a new sandbox with the first available provider
+    # 3. Executes your command in that isolated environment
+    # 4. Returns the result
+    # 5. Automatically destroys the sandbox
+
+asyncio.run(main())
 ```
 
 ### Multiple Commands
 
 ```python
+import asyncio
 from sandboxes import run_many
 
-# Execute multiple commands in one sandbox
-results = await run_many([
-    "pip install requests",
-    "python -c 'import requests; print(requests.__version__)'"
-])
-for result in results:
-    print(result.stdout)
+async def main():
+    # Execute multiple commands in one sandbox
+    results = await run_many([
+        "pip install requests",
+        "python -c 'import requests; print(requests.__version__)'"
+    ])
+    for result in results:
+        print(result.stdout)
+
+asyncio.run(main())
 ```
 
 ### Persistent Sandbox Sessions

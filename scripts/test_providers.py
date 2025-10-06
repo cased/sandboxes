@@ -37,7 +37,7 @@ async def test_provider(provider_name: str, provider):
         elif provider_name == "E2B":
             pass  # Uses default template
         elif provider_name == "Daytona":
-            config.image = "command-execution-env"
+            config.image = "daytonaio/ai-test:0.2.3"
 
         print("Creating sandbox...")
         sandbox = await provider.create_sandbox(config)
