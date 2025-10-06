@@ -10,6 +10,7 @@ from typing import Any
 
 from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
+from ..security import validate_download_path, validate_upload_path
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,13 @@ class E2BProvider(SandboxProvider):
     """E2B sandbox provider using the official SDK."""
 
     def __init__(self, api_key: str | None = None, **config):
-        """Initialize E2B provider."""
+        """
+        Initialize E2B provider.
+
+        Args:
+            api_key: E2B API key. If not provided, reads from E2B_API_KEY environment variable.
+            **config: Additional configuration options
+        """
         super().__init__(**config)
 
         if not E2B_AVAILABLE:
@@ -36,9 +43,6 @@ class E2BProvider(SandboxProvider):
         self.api_key = api_key or os.getenv("E2B_API_KEY")
         if not self.api_key:
             raise ProviderError("E2B API key not provided")
-
-        # Set API key for SDK
-        os.environ["E2B_API_KEY"] = self.api_key
 
         # Configuration
         self.default_template = config.get("template", "base")  # E2B base template
@@ -57,8 +61,7 @@ class E2BProvider(SandboxProvider):
 
     async def _create_e2b_sandbox(self, template_id=None, env_vars=None):
         """Create E2B sandbox asynchronously."""
-        # AsyncSandbox.create() is a class method that creates and connects the sandbox
-        return await E2BSandbox.create(template=template_id, envs=env_vars)
+        return await E2BSandbox.create(template=template_id, envs=env_vars, api_key=self.api_key)
 
     def _to_sandbox(self, e2b_sandbox, metadata: dict[str, Any]) -> Sandbox:
         """Convert E2B sandbox to standard Sandbox."""
@@ -278,17 +281,20 @@ class E2BProvider(SandboxProvider):
             raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
 
         try:
+            # Validate local path to prevent path traversal attacks
+            validated_path = validate_upload_path(local_path)
+
             metadata = self._sandboxes[sandbox_id]
             e2b_sandbox = metadata["e2b_sandbox"]
 
-            # Read local file content
-            with open(local_path, "rb") as f:
+            # Read local file content from validated path
+            with open(validated_path, "rb") as f:
                 content = f.read()
 
-            # Write to sandbox filesystem
+            # Write to sandbox filesystem (remote_path is inside sandbox, so it's safe)
             await e2b_sandbox.files.write(remote_path, content)
 
-            logger.info(f"Uploaded {local_path} to {remote_path} in sandbox {sandbox_id}")
+            logger.info(f"Uploaded {validated_path} to {remote_path} in sandbox {sandbox_id}")
             return True
 
         except Exception as e:
@@ -301,21 +307,24 @@ class E2BProvider(SandboxProvider):
             raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
 
         try:
+            # Validate local path to prevent path traversal attacks
+            validated_path = validate_download_path(local_path)
+
             metadata = self._sandboxes[sandbox_id]
             e2b_sandbox = metadata["e2b_sandbox"]
 
-            # Read from sandbox filesystem
+            # Read from sandbox filesystem (remote_path is inside sandbox, so it's safe)
             content = await e2b_sandbox.files.read(remote_path)
 
-            # Write to local file
-            with open(local_path, "wb") as f:
+            # Write to local file at validated path
+            with open(validated_path, "wb") as f:
                 # Handle both bytes and str
                 if isinstance(content, str):
                     f.write(content.encode())
                 else:
                     f.write(content)
 
-            logger.info(f"Downloaded {remote_path} from sandbox {sandbox_id} to {local_path}")
+            logger.info(f"Downloaded {remote_path} from sandbox {sandbox_id} to {validated_path}")
             return True
 
         except Exception as e:

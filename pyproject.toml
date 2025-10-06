@@ -1,6 +1,6 @@
 [project]
 name = "cased-sandboxes"
-version = "0.2.1"
+version = "0.2.2"
 description = "Universal library for AI code execution sandboxes"
 authors = [
     { name = "Sandboxes Contributors", email = "ted@cased.com" }
