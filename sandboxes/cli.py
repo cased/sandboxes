@@ -48,7 +48,7 @@ def cli():
 @click.argument("command", required=False)
 @click.option("--file", "-f", type=click.Path(exists=True), help="Execute code from a file")
 @click.option("--language", "--lang", help="Language/runtime (python, node, go, etc.)")
-@click.option("--provider", "-p", default="modal", help="Provider to use (e2b, modal, daytona)")
+@click.option("--provider", "-p", default="daytona", help="Provider to use (daytona, e2b, modal)")
 @click.option("--image", "-i", help="Docker image or template")
 @click.option("--env", "-e", multiple=True, help="Environment variables (KEY=VALUE)")
 @click.option("--label", "-l", multiple=True, help="Labels (KEY=VALUE)")
