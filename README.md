@@ -141,8 +141,6 @@ result = await run("python script.py")                     # Auto-selects
 
 `sandboxes` includes a powerful CLI for running code in **any language** from your terminal. Execute TypeScript, Go, Rust, Python, or any other language in isolated sandboxes.
 
-### Installation
-
 ### Quick Start
 
 ```bash
