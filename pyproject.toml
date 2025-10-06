@@ -1,9 +1,9 @@
 [project]
 name = "cased-sandboxes"
-version = "0.2.0"
+version = "0.2.1"
 description = "Universal library for AI code execution sandboxes"
 authors = [
-    { name = "Sandboxes Contributors", email = "hello@cased.com" }
+    { name = "Sandboxes Contributors", email = "ted@cased.com" }
 ]
 license = "MIT"
 readme = "README.md"

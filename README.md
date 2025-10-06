@@ -842,6 +842,18 @@ async def main():
 asyncio.run(main())
 ```
 
+## Security Disclosure
+
+We take security seriously. If you discover a security vulnerability in this library or any of its dependencies, please report it responsibly.
+
+**Responsible Disclosure:**
+- Email security reports to: **ted@cased.com**
+- Include a detailed description of the vulnerability
+- Provide steps to reproduce if possible
+- Allow reasonable time for a fix before public disclosure
+
+We will acknowledge your report within 48 hours and work with you to address the issue.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
