@@ -97,44 +97,62 @@ asyncio.run(main())
 ### Streaming Output
 
 ```python
-# Stream long-running commands
-async with Sandbox.create() as sandbox:
-    async for chunk in sandbox.stream("python train_model.py"):
-        print(chunk, end="", flush=True)
+import asyncio
+from sandboxes import Sandbox
+
+async def main():
+    # Stream long-running commands
+    async with Sandbox.create() as sandbox:
+        async for chunk in sandbox.stream("python train_model.py"):
+            print(chunk, end="", flush=True)
+
+asyncio.run(main())
 ```
 
 ### Smart Sandbox Reuse
 
 ```python
-# First call creates a new sandbox
-sandbox1 = await Sandbox.get_or_create(
-    labels={"project": "ml-training", "gpu": "true"}
-)
+import asyncio
+from sandboxes import Sandbox
 
-# Later calls reuse the same sandbox
-sandbox2 = await Sandbox.get_or_create(
-    labels={"project": "ml-training", "gpu": "true"}
-)
+async def main():
+    # First call creates a new sandbox
+    sandbox1 = await Sandbox.get_or_create(
+        labels={"project": "ml-training", "gpu": "true"}
+    )
 
-assert sandbox1.id == sandbox2.id  # Same sandbox!
+    # Later calls reuse the same sandbox
+    sandbox2 = await Sandbox.get_or_create(
+        labels={"project": "ml-training", "gpu": "true"}
+    )
+
+    assert sandbox1.id == sandbox2.id  # Same sandbox!
+
+asyncio.run(main())
 ```
 
 ### Provider Selection with Automatic Failover
 
 ```python
-# Control where your code runs
-sandbox = await Sandbox.create(
-    provider="e2b",  # Try E2B first
-    fallback=["modal", "cloudflare", "daytona"],  # Automatic failover
-)
+import asyncio
+from sandboxes import Sandbox, run
 
-# The library automatically tries the next provider if one fails
-print(f"Using: {sandbox._provider_name}")
+async def main():
+    # Control where your code runs
+    sandbox = await Sandbox.create(
+        provider="e2b",  # Try E2B first
+        fallback=["modal", "cloudflare", "daytona"],  # Automatic failover
+    )
 
-# Or specify directly with run()
-result = await run("python script.py", provider="modal")  # Runs on Modal
-result = await run("python script.py", provider="e2b")    # Runs on E2B
-result = await run("python script.py")                     # Auto-selects
+    # The library automatically tries the next provider if one fails
+    print(f"Using: {sandbox._provider_name}")
+
+    # Or specify directly with run()
+    result = await run("python script.py", provider="modal")  # Runs on Modal
+    result = await run("python script.py", provider="e2b")    # Runs on E2B
+    result = await run("python script.py")                     # Auto-selects
+
+asyncio.run(main())
 ```
 
 ## Command Line Interface
@@ -303,7 +321,13 @@ export CLOUDFLARE_API_TOKEN="..."
 
 Then just use:
 ```python
-sandbox = await Sandbox.create()  # Auto-selects first available provider
+import asyncio
+from sandboxes import Sandbox
+
+async def main():
+    sandbox = await Sandbox.create()  # Auto-selects first available provider
+
+asyncio.run(main())
 ```
 
 #### How Auto-Detection Works
@@ -393,20 +417,31 @@ Each provider requires appropriate authentication:
 ### Custom Images and Templates
 
 ```python
-# Use custom Docker images with Modal
-config = SandboxConfig(image="python:3.12-slim")
-sandbox = await modal_provider.create_sandbox(config)
+import asyncio
+from sandboxes import SandboxConfig
+from sandboxes.providers import ModalProvider, E2BProvider, DaytonaProvider
 
-# Use E2B templates
-config = SandboxConfig(image="your-template-id")
-sandbox = await e2b_provider.create_sandbox(config)
+async def main():
+    modal_provider = ModalProvider()
+    e2b_provider = E2BProvider()
+    daytona_provider = DaytonaProvider()
 
-# Use Daytona snapshots
-config = SandboxConfig(image="your-snapshot-name")
-sandbox = await daytona_provider.create_sandbox(config)
+    # Use custom Docker images with Modal
+    config = SandboxConfig(image="python:3.12-slim")
+    sandbox = await modal_provider.create_sandbox(config)
+
+    # Use E2B templates
+    config = SandboxConfig(image="your-template-id")
+    sandbox = await e2b_provider.create_sandbox(config)
+
+    # Use Daytona snapshots
+    config = SandboxConfig(image="your-snapshot-name")
+    sandbox = await daytona_provider.create_sandbox(config)
+
+asyncio.run(main())
 
 # Via CLI
-sandboxes run "python --version" --image python:3.12-alpine
+# sandboxes run "python --version" --image python:3.12-alpine
 ```
 
 ## Advanced Usage
@@ -414,24 +449,29 @@ sandboxes run "python --version" --image python:3.12-alpine
 ### Multi-Provider Orchestration
 
 ```python
+import asyncio
 from sandboxes import Manager, SandboxConfig
+from sandboxes.providers import E2BProvider, ModalProvider, DaytonaProvider, CloudflareProvider
 
-# Initialize manager with multiple providers
-manager = Manager(
-    providers=[
-        E2BProvider(),
-        ModalProvider(),
-        DaytonaProvider(),
-        CloudflareProvider(base_url="https://your-worker.workers.dev", api_token="..."),
-    ],
-    default_provider="e2b"
-)
+async def main():
+    # Initialize manager with multiple providers
+    manager = Manager(
+        providers=[
+            E2BProvider(),
+            ModalProvider(),
+            DaytonaProvider(),
+            CloudflareProvider(base_url="https://your-worker.workers.dev", api_token="..."),
+        ],
+        default_provider="e2b"
+    )
 
-# Manager handles failover automatically
-sandbox = await manager.create_sandbox(
-    SandboxConfig(labels={"task": "test"}),
-    fallback=True  # Try other providers if primary fails
-)
+    # Manager handles failover automatically
+    sandbox = await manager.create_sandbox(
+        SandboxConfig(labels={"task": "test"}),
+        fallback=True  # Try other providers if primary fails
+    )
+
+asyncio.run(main())
 ```
 
 ### Sandbox Reuse (Provider-Level)
@@ -439,50 +479,74 @@ sandbox = await manager.create_sandbox(
 For advanced control, work directly with providers instead of the high-level `Sandbox` API:
 
 ```python
-# Sandboxes can be reused based on labels
-config = SandboxConfig(
-    labels={"project": "ml-training", "gpu": "true"}
-)
+import asyncio
+from sandboxes import SandboxConfig
+from sandboxes.providers import E2BProvider
 
-# This will find existing sandbox or create new one
-sandbox = await provider.get_or_create_sandbox(config)
+async def main():
+    provider = E2BProvider()
 
-# Later in another process...
-# This will find the same sandbox
-sandbox = await provider.find_sandbox({"project": "ml-training"})
+    # Sandboxes can be reused based on labels
+    config = SandboxConfig(
+        labels={"project": "ml-training", "gpu": "true"}
+    )
+
+    # This will find existing sandbox or create new one
+    sandbox = await provider.get_or_create_sandbox(config)
+
+    # Later in another process...
+    # This will find the same sandbox
+    sandbox = await provider.find_sandbox({"project": "ml-training"})
+
+asyncio.run(main())
 ```
 
 ### Streaming Execution
 
 ```python
-# Stream output as it's generated
-async for chunk in provider.stream_execution(
-    sandbox.id,
-    "for i in range(10): print(i); time.sleep(1)"
-):
-    print(chunk, end="")
+import asyncio
+from sandboxes.providers import E2BProvider
+
+async def main():
+    provider = E2BProvider()
+    sandbox = await provider.create_sandbox()
+
+    # Stream output as it's generated
+    async for chunk in provider.stream_execution(
+        sandbox.id,
+        "for i in range(10): print(i); time.sleep(1)"
+    ):
+        print(chunk, end="")
+
+asyncio.run(main())
 ```
 
 ### Connection Pooling
 
 ```python
+import asyncio
+from sandboxes import SandboxConfig
 from sandboxes.pool import ConnectionPool
+from sandboxes.providers import E2BProvider
 
-# Create a connection pool for better performance
-pool = ConnectionPool(
-    provider=E2BProvider(),
-    max_connections=10,
-    max_idle_time=300,
-    ttl=3600
-)
+async def main():
+    # Create a connection pool for better performance
+    pool = ConnectionPool(
+        provider=E2BProvider(),
+        max_connections=10,
+        max_idle_time=300,
+        ttl=3600
+    )
 
-# Get or create connection
-conn = await pool.get_or_create(
-    SandboxConfig(labels={"pool": "ml"})
-)
+    # Get or create connection
+    conn = await pool.get_or_create(
+        SandboxConfig(labels={"pool": "ml"})
+    )
 
-# Return to pool when done
-await pool.release(conn)
+    # Return to pool when done
+    await pool.release(conn)
+
+asyncio.run(main())
 ```
 
 ## API Reference
@@ -554,6 +618,7 @@ While `sandboxes` is a Python library, it can execute code in **any language** a
 ### Running TypeScript
 
 ```python
+import asyncio
 from sandboxes import Sandbox
 
 async def run_typescript():
@@ -580,11 +645,14 @@ console.log(`Type system ensures safety at compile time`);
         # Hello from TypeScript!
         # Sum of numbers: 15
         # Type system ensures safety at compile time
+
+asyncio.run(run_typescript())
 ```
 
 ### Running Go
 
 ```python
+import asyncio
 from sandboxes import Sandbox
 
 async def run_go():
@@ -632,11 +700,16 @@ go run /tmp/main.go
         # Hello from Go!
         # Fibonacci(10) = 55
         # Circle area (r=5.0): 78.54
+
+asyncio.run(run_go())
 ```
 
 ### Multi-Language AI Agent
 
 ```python
+import asyncio
+from sandboxes import Sandbox
+
 async def execute_code(code: str, language: str):
     """Execute code in any language."""
     async with Sandbox.create() as sandbox:
@@ -663,6 +736,9 @@ async def execute_code(code: str, language: str):
             raise ValueError(f"Unsupported language: {language}")
 
         return result.stdout if result.success else result.stderr
+
+# Example usage
+asyncio.run(execute_code("print('Hello from Python!')", "python"))
 ```
 
 ## Common Use Cases
@@ -670,6 +746,7 @@ async def execute_code(code: str, language: str):
 ### AI Agent Code Execution
 
 ```python
+import asyncio
 from sandboxes import Sandbox
 
 async def execute_agent_code(code: str, language: str = "python"):
@@ -686,11 +763,17 @@ async def execute_agent_code(code: str, language: str = "python"):
         if result.exit_code != 0:
             return f"Error: {result.stderr}"
         return result.stdout
+
+# Example usage
+asyncio.run(execute_agent_code("print('Hello!')", "python"))
 ```
 
 ### Data Processing Pipeline
 
 ```python
+import asyncio
+from sandboxes import Sandbox
+
 async def process_dataset(dataset_url: str):
     """Process data in isolated environment."""
     async with Sandbox.create(labels={"task": "data-pipeline"}) as sandbox:
@@ -709,11 +792,17 @@ async def process_dataset(dataset_url: str):
 
         # Download results
         await sandbox.download("/tmp/results.csv", "results.csv")
+
+# Example usage
+asyncio.run(process_dataset("https://example.com/data.csv"))
 ```
 
 ### Code Testing and Validation
 
 ```python
+import asyncio
+from sandboxes import Sandbox
+
 async def test_solution(code: str, test_cases: list):
     """Test code against multiple test cases."""
     results = []
@@ -734,6 +823,11 @@ async def test_solution(code: str, test_cases: list):
             })
 
     return results
+
+# Example usage
+asyncio.run(test_solution("print(sum(map(int, input().split())))", [
+    {"input": "1 2 3", "expected": "6"}
+]))
 ```
 
 ## More Examples
@@ -741,6 +835,9 @@ async def test_solution(code: str, test_cases: list):
 ### Web Scraper Sandbox
 
 ```python
+import asyncio
+from sandboxes import Sandbox
+
 async def scrape_in_sandbox(url: str):
     async with Sandbox.create() as sandbox:
         # Install dependencies
@@ -757,11 +854,18 @@ print(soup.title.text)
 """
         result = await sandbox.execute(f"python3 -c '{code}'")
         return result.stdout
+
+# Example usage
+asyncio.run(scrape_in_sandbox("https://example.com"))
 ```
 
 ### ML Training Sandbox
 
 ```python
+import asyncio
+from sandboxes import SandboxConfig
+from sandboxes.providers import ModalProvider
+
 async def train_model_sandboxed():
     # Use Modal for GPU support
     provider = ModalProvider()
@@ -786,11 +890,18 @@ async def train_model_sandboxed():
 
     await provider.destroy_sandbox(sandbox.id)
     return result
+
+# Example usage
+asyncio.run(train_model_sandboxed())
 ```
 
 ### Multi-Provider Fallback
 
 ```python
+import asyncio
+from sandboxes import Manager, SandboxConfig
+from sandboxes.providers import E2BProvider, ModalProvider, DaytonaProvider
+
 async def reliable_execution(code: str):
     manager = Manager(
         providers=[
@@ -807,6 +918,9 @@ async def reliable_execution(code: str):
     )
 
     return result
+
+# Example usage
+asyncio.run(reliable_execution("print('Hello!')"))
 ```
 
 ## Troubleshooting
@@ -831,32 +945,44 @@ provider = E2BProvider(api_key="your-key")
 ### Provider Failures
 
 ```python
-# Enable automatic failover
-sandbox = await Sandbox.create(
-    provider="e2b",
-    fallback=["modal", "cloudflare", "daytona"]
-)
+import asyncio
+from sandboxes import Sandbox
+from sandboxes.exceptions import ProviderError
 
-# Or handle errors manually
-try:
-    sandbox = await Sandbox.create(provider="e2b")
-except ProviderError:
-    sandbox = await Sandbox.create(provider="modal")
+async def main():
+    # Enable automatic failover
+    sandbox = await Sandbox.create(
+        provider="e2b",
+        fallback=["modal", "cloudflare", "daytona"]
+    )
+
+    # Or handle errors manually
+    try:
+        sandbox = await Sandbox.create(provider="e2b")
+    except ProviderError:
+        sandbox = await Sandbox.create(provider="modal")
+
+asyncio.run(main())
 ```
 
 ### Debugging
 
 ```python
-# Enable debug logging
+import asyncio
 import logging
-logging.basicConfig(level=logging.DEBUG)
-
-# Check provider health
 from sandboxes import Sandbox
-Sandbox._ensure_manager()
-for name, provider in Sandbox._manager.providers.items():
-    health = await provider.health_check()
-    print(f"{name}: {'✅' if health else '❌'}")
+
+async def main():
+    # Enable debug logging
+    logging.basicConfig(level=logging.DEBUG)
+
+    # Check provider health
+    Sandbox._ensure_manager()
+    for name, provider in Sandbox._manager.providers.items():
+        health = await provider.health_check()
+        print(f"{name}: {'✅' if health else '❌'}")
+
+asyncio.run(main())
 ```
 
 ## License
