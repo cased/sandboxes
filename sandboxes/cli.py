@@ -7,7 +7,6 @@ import os
 import sys
 
 import click
-from tabulate import tabulate
 
 
 def get_provider(name: str):
@@ -283,6 +282,8 @@ def list(provider, label, output_json):
             click.echo(json.dumps(all_sandboxes, indent=2))
         else:
             if all_sandboxes:
+                from tabulate import tabulate
+
                 headers = ["ID", "Provider", "State", "Labels"]
                 rows = [
                     [s["id"][:20], s["provider"], s["state"], s["labels"][:30]]

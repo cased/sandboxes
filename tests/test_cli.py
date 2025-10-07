@@ -16,7 +16,7 @@ class TestCLIHelpers:
 
     def test_get_provider_valid(self):
         """Test getting valid providers."""
-        with patch("sandboxes.cli.ModalProvider") as mock_modal:
+        with patch("sandboxes.providers.modal.ModalProvider") as mock_modal:
             provider = get_provider("modal")
             assert provider is not None
             mock_modal.assert_called_once()
@@ -29,7 +29,7 @@ class TestCLIHelpers:
     def test_get_provider_init_error(self):
         """Test provider initialization error."""
         with (
-            patch("sandboxes.cli.ModalProvider", side_effect=Exception("Init failed")),
+            patch("sandboxes.providers.modal.ModalProvider", side_effect=Exception("Init failed")),
             pytest.raises(SystemExit),
         ):
             get_provider("modal")
