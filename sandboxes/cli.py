@@ -9,15 +9,14 @@ import sys
 import click
 from tabulate import tabulate
 
-from sandboxes import SandboxConfig
-from sandboxes.providers.cloudflare import CloudflareProvider
-from sandboxes.providers.daytona import DaytonaProvider
-from sandboxes.providers.e2b import E2BProvider
-from sandboxes.providers.modal import ModalProvider
-
 
 def get_provider(name: str):
     """Get a provider instance by name."""
+    from sandboxes.providers.cloudflare import CloudflareProvider
+    from sandboxes.providers.daytona import DaytonaProvider
+    from sandboxes.providers.e2b import E2BProvider
+    from sandboxes.providers.modal import ModalProvider
+
     providers = {
         "e2b": E2BProvider,
         "modal": ModalProvider,
@@ -169,7 +168,8 @@ def run(command, file, language, provider, image, env, label, timeout, reuse, ke
                 key, value = lbl.split("=", 1)
                 labels[key] = value
 
-        # Create config
+        from sandboxes import SandboxConfig
+
         config = SandboxConfig(
             timeout_seconds=timeout,
             env_vars=env_vars,
@@ -375,6 +375,8 @@ def test(provider):
 
                 # Test create
                 click.echo("  Creating sandbox...")
+                from sandboxes import SandboxConfig
+
                 config = SandboxConfig(labels={"test": "cli"})
                 if p_name == "modal":
                     config.provider_config = {"image": "python:3.11-slim"}

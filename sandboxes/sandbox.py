@@ -9,7 +9,6 @@ from typing import Any
 from .base import ExecutionResult, SandboxConfig
 from .base import Sandbox as BaseSandbox
 from .manager import SandboxManager
-from .providers import CloudflareProvider, DaytonaProvider, E2BProvider, ModalProvider
 
 
 class _SandboxAsyncContextManager:
@@ -76,6 +75,8 @@ class Sandbox:
         The first registered provider becomes the default unless explicitly set.
         Users can override with Sandbox.configure(default_provider="...").
         """
+        from .providers import CloudflareProvider, DaytonaProvider, E2BProvider, ModalProvider
+
         manager = cls._manager
 
         # Try to register Daytona (priority 1)
@@ -139,6 +140,8 @@ class Sandbox:
                 default_provider="e2b"
             )
         """
+        from .providers import CloudflareProvider, DaytonaProvider, E2BProvider, ModalProvider
+
         manager = cls._ensure_manager()
 
         if e2b_api_key:
