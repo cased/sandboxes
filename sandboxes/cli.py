@@ -10,6 +10,8 @@ import click
 from tabulate import tabulate
 
 from sandboxes import SandboxConfig
+from sandboxes.constants import validate_provider
+from sandboxes.exceptions import ProviderError
 from sandboxes.providers.cloudflare import CloudflareProvider
 from sandboxes.providers.daytona import DaytonaProvider
 from sandboxes.providers.e2b import E2BProvider
@@ -18,17 +20,19 @@ from sandboxes.providers.modal import ModalProvider
 
 def get_provider(name: str):
     """Get a provider instance by name."""
+    # Validate provider name
+    try:
+        validate_provider(name, allow_none=False)
+    except ProviderError as e:
+        click.echo(f"❌ {e}", err=True)
+        sys.exit(1)
+
     providers = {
         "e2b": E2BProvider,
         "modal": ModalProvider,
         "daytona": DaytonaProvider,
         "cloudflare": CloudflareProvider,
     }
-
-    if name not in providers:
-        click.echo(f"❌ Unknown provider: {name}", err=True)
-        click.echo(f"Available providers: {', '.join(providers.keys())}", err=True)
-        sys.exit(1)
 
     try:
         return providers[name]()

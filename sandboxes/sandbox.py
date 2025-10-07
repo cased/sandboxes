@@ -8,6 +8,7 @@ from typing import Any
 
 from .base import ExecutionResult, SandboxConfig
 from .base import Sandbox as BaseSandbox
+from .constants import validate_provider, validate_providers
 from .manager import SandboxManager
 from .providers import CloudflareProvider, DaytonaProvider, E2BProvider, ModalProvider
 
@@ -139,6 +140,10 @@ class Sandbox:
                 default_provider="e2b"
             )
         """
+        # Validate default_provider if specified
+        if default_provider:
+            validate_provider(default_provider, allow_none=False)
+
         manager = cls._ensure_manager()
 
         if e2b_api_key:
@@ -169,6 +174,10 @@ class Sandbox:
         **kwargs: Any,
     ) -> Sandbox:
         """Internal implementation of sandbox creation."""
+        # Validate provider names
+        validate_provider(provider, allow_none=True)
+        validate_providers(fallback, allow_none=False)
+
         manager = cls._ensure_manager()
 
         # Build config
@@ -272,6 +281,9 @@ class Sandbox:
         Returns:
             Sandbox instance if found, None otherwise
         """
+        # Validate provider if specified
+        validate_provider(provider, allow_none=True)
+
         manager = cls._ensure_manager()
 
         providers_to_check = [provider] if provider else list(manager.providers.keys())

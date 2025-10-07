@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from .base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider
+from .constants import validate_provider, validate_providers
 from .exceptions import ProviderError
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,9 @@ class SandboxManager:
         if not name:
             raise ProviderError("No provider specified and no default provider set")
 
+        # Validate provider name (only if not already registered, to allow custom/test providers)
         if name not in self.providers:
+            validate_provider(name, allow_none=False)
             raise ProviderError(f"Provider '{name}' not registered")
 
         return self.providers[name]
@@ -70,6 +73,14 @@ class SandboxManager:
             provider: Preferred provider name
             fallback_providers: List of providers to try if primary fails
         """
+        # Validate provider names (skip if already registered, to allow custom/test providers)
+        if provider and provider not in self.providers:
+            validate_provider(provider, allow_none=False)
+        if fallback_providers:
+            for fallback in fallback_providers:
+                if fallback not in self.providers:
+                    validate_provider(fallback, allow_none=False)
+
         providers_to_try = [provider] if provider else []
 
         if fallback_providers:

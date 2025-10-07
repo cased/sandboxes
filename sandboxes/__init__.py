@@ -13,6 +13,7 @@ from .base import (
     SandboxState,
 )
 from .base import Sandbox as BaseSandbox
+from .constants import VALID_PROVIDERS, validate_provider, validate_providers
 from .exceptions import (
     ProviderError,
     SandboxAuthenticationError,
@@ -52,6 +53,10 @@ __all__ = [
     "RetryConfig",
     "with_retry",
     "CircuitBreaker",
+    # Constants and validation
+    "VALID_PROVIDERS",
+    "validate_provider",
+    "validate_providers",
     # Exceptions
     "SandboxError",
     "SandboxNotFoundError",

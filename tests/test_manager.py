@@ -177,4 +177,4 @@ class TestManager:
         with pytest.raises(ProviderError) as exc_info:
             await manager.create_sandbox(config, provider="nonexistent")
 
-        assert "Failed to create sandbox" in str(exc_info.value)
+        assert "Invalid provider" in str(exc_info.value)
