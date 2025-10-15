@@ -29,7 +29,7 @@ def validate_provider(provider: str | None, allow_none: bool = True) -> None:
         )
 
 
-def validate_providers(providers: list[str | None] | None, allow_none: bool = True) -> None:
+def validate_providers(providers: list[str] | None, allow_none: bool = True) -> None:
     """
     Validate a list of provider names.
 

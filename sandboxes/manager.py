@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from .base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider
-from .constants import validate_provider, validate_providers
+from .constants import validate_provider
 from .exceptions import ProviderError
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ class SandboxManager:
         if fallback_providers:
             providers_to_try.extend(fallback_providers)
 
-        if not providers_to_try:
+        if not providers_to_try and self.default_provider:
             providers_to_try = [self.default_provider]
 
         last_error = None
@@ -95,8 +95,8 @@ class SandboxManager:
                 continue
 
             try:
-                provider = self.get_provider(provider_name)
-                sandbox = await provider.create_sandbox(config)
+                provider_obj = self.get_provider(provider_name)
+                sandbox = await provider_obj.create_sandbox(config)
                 logger.info(f"Created sandbox {sandbox.id} with provider {provider_name}")
                 return sandbox
             except Exception as e:
