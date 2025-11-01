@@ -192,8 +192,8 @@ await sandbox.destroy()
 
 ## Command Line Interface
 
-`sandboxes` includes a powerful CLI for running code in **any language** from your terminal. Execute TypeScript, Go, Rust, Python, or any other language in isolated sandboxes.
-You can call the CLI from any language, or write a wrapper for it.
+`sandboxes` includes a CLI for running code in **any language** from your terminal. TypeScript, Go, Rust, Python, or any other language in isolated sandboxes.
+Call the CLI from any language, or write a wrapper for it.
 
 ### Quick Start
 
