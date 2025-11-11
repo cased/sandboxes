@@ -17,7 +17,7 @@ from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
 
 _DEFAULT_TIMEOUT = 30.0
 _DEFAULT_BASE_URL = "https://api.hopx.dev"
-_DEFAULT_TEMPLATE = "python"  # Default template for sandbox creation
+_DEFAULT_TEMPLATE = "code-interpreter"  # Default template for sandbox creation
 
 
 class HopxProvider(SandboxProvider):
@@ -99,16 +99,17 @@ class HopxProvider(SandboxProvider):
 
         # Prepare creation payload
         payload: dict[str, Any] = {
-            "templateId": template,
+            "template_name": template,
         }
 
         # Add environment variables if provided
         if config.env_vars:
-            payload["envVars"] = config.env_vars
+            payload["env_vars"] = config.env_vars
 
         # Create sandbox via control plane API
         response = await self._post("/v1/sandboxes", json=payload)
         sandbox_id = response.get("id")
+        public_host = response.get("public_host")  # Data plane URL
 
         if not sandbox_id:
             raise SandboxError("Failed to create sandbox: No ID returned")
@@ -123,6 +124,7 @@ class HopxProvider(SandboxProvider):
                 "created_at": time.time(),
                 "last_accessed": time.time(),
                 "template": template,
+                "public_host": public_host,  # Store for data plane operations
             }
 
         # Convert to standard Sandbox object
@@ -200,10 +202,22 @@ class HopxProvider(SandboxProvider):
             SandboxNotFoundError: If sandbox doesn't exist
             SandboxError: If execution fails
         """
-        # Update last accessed time
+        # Get public_host for data plane operations
         async with self._lock:
             if sandbox_id in self._sandboxes:
                 self._sandboxes[sandbox_id]["last_accessed"] = time.time()
+                public_host = self._sandboxes[sandbox_id].get("public_host")
+            else:
+                public_host = None
+
+        # If we don't have public_host cached, try to get it from API
+        if not public_host:
+            sandbox_info = await self.get_sandbox(sandbox_id)
+            if sandbox_info and sandbox_info.metadata.get("public_host"):
+                public_host = sandbox_info.metadata["public_host"]
+            else:
+                # Fallback to standard pattern
+                public_host = f"https://{sandbox_id}.hopx.dev"
 
         # Apply environment variables to command if provided
         command_to_run = self._apply_env_vars_to_command(command, env_vars)
@@ -216,10 +230,9 @@ class HopxProvider(SandboxProvider):
         if timeout:
             payload["timeout"] = timeout
 
-        # Use data plane endpoint: https://{sandbox_id}.hopx.dev
-        data_plane_url = f"https://{sandbox_id}.hopx.dev"
+        # Use data plane endpoint from public_host
         response = await self._post_to_data_plane(
-            data_plane_url,
+            public_host,
             "/commands/run",
             json=payload,
         )
@@ -438,8 +451,8 @@ class HopxProvider(SandboxProvider):
     async def _wait_for_sandbox_ready(
         self,
         sandbox_id: str,
-        max_wait: int = 60,
-        poll_interval: float = 1.0,
+        max_wait: int = 300,  # 5 minutes for template-based sandboxes
+        poll_interval: float = 2.0,
     ) -> None:
         """Wait for sandbox to transition to 'running' state.
 
@@ -507,8 +520,8 @@ class HopxProvider(SandboxProvider):
             labels=local_metadata.get("labels", {}),
             created_at=local_metadata.get("created_at"),
             metadata={
-                "template": local_metadata.get("template") or api_data.get("templateId"),
-                "host": f"https://{sandbox_id}.hopx.dev",
+                "template": local_metadata.get("template") or api_data.get("template_id") or api_data.get("template_name"),
+                "public_host": api_data.get("public_host") or local_metadata.get("public_host"),
                 "api_state": state_str,
                 **api_data,
             },

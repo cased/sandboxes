@@ -153,8 +153,13 @@ async def test_hopx_http_error_raises_sandbox_error():
 
         mock_request.side_effect = side_effect
 
+        # health_check catches SandboxError and returns False
+        result = await provider.health_check()
+        assert result is False
+
+        # Test with a method that doesn't catch the error
         with pytest.raises(SandboxError):
-            await provider.health_check()
+            await provider.get_sandbox("test-id")
 
 
 @pytest.mark.asyncio
@@ -300,7 +305,14 @@ async def test_hopx_find_sandbox_with_labels():
             metadata={},
         )
 
-        mock_list.return_value = [sandbox1, sandbox2]
+        # Mock list_sandboxes to filter by labels properly
+        async def mock_list_side_effect(labels=None):
+            all_sandboxes = [sandbox1, sandbox2]
+            if labels:
+                return [s for s in all_sandboxes if all(s.labels.get(k) == v for k, v in labels.items())]
+            return all_sandboxes
+
+        mock_list.side_effect = mock_list_side_effect
 
         # Find by matching labels
         found = await provider.find_sandbox({"env": "prod"})
