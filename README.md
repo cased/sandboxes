@@ -9,7 +9,7 @@ Universal library for AI code execution sandboxes.
 
 `sandboxes` provides a unified interface for sandboxed code execution across multiple providers:
 
-- **Current providers**: E2B, Modal, Daytona
+- **Current providers**: E2B, Modal, Daytona, Hopx
 - **Experimental**: Cloudflare (requires self-hosted Worker deployment)
 
 Write your code once and switch between providers with a single line change, or let the library automatically select a provider.
@@ -351,6 +351,7 @@ The library automatically detects available providers from environment variables
 export E2B_API_KEY="..."
 export MODAL_TOKEN_ID="..."  # Or use `modal token set`
 export DAYTONA_API_KEY="..."
+export HOPX_API_KEY="hopx_live_<keyId>.<secret>"
 export CLOUDFLARE_SANDBOX_BASE_URL="https://your-worker.workers.dev"
 export CLOUDFLARE_API_TOKEN="..."
 ```
@@ -372,8 +373,9 @@ When you call `Sandbox.create()` or `run()`, the library checks for providers in
 
 1. **Daytona** - Looks for `DAYTONA_API_KEY`
 2. **E2B** - Looks for `E2B_API_KEY`
-3. **Modal** - Looks for `~/.modal.toml` or `MODAL_TOKEN_ID`
-4. **Cloudflare** *(experimental)* - Looks for `CLOUDFLARE_SANDBOX_BASE_URL` + `CLOUDFLARE_API_TOKEN`
+3. **Hopx** - Looks for `HOPX_API_KEY`
+4. **Modal** - Looks for `~/.modal.toml` or `MODAL_TOKEN_ID`
+5. **Cloudflare** *(experimental)* - Looks for `CLOUDFLARE_SANDBOX_BASE_URL` + `CLOUDFLARE_API_TOKEN`
 
 **The first provider with valid credentials becomes the default.** Cloudflare requires deploying your own Worker.
 
@@ -412,11 +414,12 @@ from sandboxes import Sandbox
 # Configure providers programmatically
 Sandbox.configure(
     e2b_api_key="your-key",
+    hopx_api_key="hopx_live_<keyId>.<secret>",
     cloudflare_config={
         "base_url": "https://your-worker.workers.dev",
         "api_token": "your-token",
     },
-    default_provider="e2b"
+    default_provider="hopx"
 )
 ```
 
@@ -429,6 +432,7 @@ from sandboxes.providers import (
     E2BProvider,
     ModalProvider,
     DaytonaProvider,
+    HopxProvider,
     CloudflareProvider,
 )
 
@@ -441,6 +445,9 @@ provider = ModalProvider()
 # Daytona - Uses DAYTONA_API_KEY env var
 provider = DaytonaProvider()
 
+# Hopx - Uses HOPX_API_KEY env var
+provider = HopxProvider()
+
 # Cloudflare - Requires base_url and token
 provider = CloudflareProvider(
     base_url="https://your-worker.workers.dev",
@@ -452,6 +459,7 @@ Each provider requires appropriate authentication:
 - **E2B**: Set `E2B_API_KEY` environment variable
 - **Modal**: Run `modal token set` to configure
 - **Daytona**: Set `DAYTONA_API_KEY` environment variable
+- **Hopx**: Set `HOPX_API_KEY` environment variable (format: `hopx_live_<keyId>.<secret>`)
 - **Cloudflare** *(experimental)*: Deploy the [Cloudflare sandbox Worker](https://github.com/cloudflare/sandbox-sdk) and set `CLOUDFLARE_SANDBOX_BASE_URL`, `CLOUDFLARE_API_TOKEN`, and (optionally) `CLOUDFLARE_ACCOUNT_ID`
 
 > **Cloudflare setup tips (experimental)**
@@ -479,6 +487,7 @@ async def main():
     manager.register_provider("e2b", E2BProvider, {})
     manager.register_provider("modal", ModalProvider, {})
     manager.register_provider("daytona", DaytonaProvider, {})
+    manager.register_provider("hopx", HopxProvider, {})
     manager.register_provider(
         "cloudflare",
         CloudflareProvider,
