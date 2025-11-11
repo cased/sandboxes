@@ -109,7 +109,8 @@ class HopxProvider(SandboxProvider):
         # Create sandbox via control plane API
         response = await self._post("/v1/sandboxes", json=payload)
         sandbox_id = response.get("id")
-        public_host = response.get("public_host")  # Data plane URL
+        public_host = response.get("public_host") or response.get("direct_url")  # Data plane URL
+        auth_token = response.get("auth_token")  # JWT for data plane authentication
 
         if not sandbox_id:
             raise SandboxError("Failed to create sandbox: No ID returned")
@@ -125,6 +126,7 @@ class HopxProvider(SandboxProvider):
                 "last_accessed": time.time(),
                 "template": template,
                 "public_host": public_host,  # Store for data plane operations
+                "auth_token": auth_token,  # JWT for data plane authentication
             }
 
         # Convert to standard Sandbox object
@@ -202,22 +204,33 @@ class HopxProvider(SandboxProvider):
             SandboxNotFoundError: If sandbox doesn't exist
             SandboxError: If execution fails
         """
-        # Get public_host for data plane operations
+        # Get public_host and auth_token for data plane operations
         async with self._lock:
             if sandbox_id in self._sandboxes:
                 self._sandboxes[sandbox_id]["last_accessed"] = time.time()
                 public_host = self._sandboxes[sandbox_id].get("public_host")
+                auth_token = self._sandboxes[sandbox_id].get("auth_token")
             else:
                 public_host = None
+                auth_token = None
 
         # If we don't have public_host cached, try to get it from API
-        if not public_host:
+        if not public_host or not auth_token:
             sandbox_info = await self.get_sandbox(sandbox_id)
-            if sandbox_info and sandbox_info.metadata.get("public_host"):
-                public_host = sandbox_info.metadata["public_host"]
-            else:
-                # Fallback to standard pattern
-                public_host = f"https://{sandbox_id}.hopx.dev"
+            if sandbox_info:
+                public_host = sandbox_info.metadata.get("public_host") or sandbox_info.metadata.get("direct_url")
+                auth_token = sandbox_info.metadata.get("auth_token")
+                # Cache for future use
+                async with self._lock:
+                    if sandbox_id in self._sandboxes:
+                        self._sandboxes[sandbox_id]["public_host"] = public_host
+                        self._sandboxes[sandbox_id]["auth_token"] = auth_token
+
+        if not public_host:
+            raise SandboxError(f"No public_host available for sandbox {sandbox_id}")
+
+        if not auth_token:
+            raise SandboxError(f"No auth_token available for sandbox {sandbox_id}")
 
         # Apply environment variables to command if provided
         command_to_run = self._apply_env_vars_to_command(command, env_vars)
@@ -230,11 +243,12 @@ class HopxProvider(SandboxProvider):
         if timeout:
             payload["timeout"] = timeout
 
-        # Use data plane endpoint from public_host
+        # Use data plane endpoint from public_host with JWT auth
         response = await self._post_to_data_plane(
             public_host,
             "/commands/run",
             json=payload,
+            auth_token=auth_token,
         )
 
         # Parse execution result
@@ -469,14 +483,15 @@ class HopxProvider(SandboxProvider):
         while time.time() - start_time < max_wait:
             try:
                 response = await self._get(f"/v1/sandboxes/{sandbox_id}")
-                state = response.get("state", "").lower()
+                # API uses "status" field, not "state"
+                status = response.get("status", "").lower()
 
-                if state == "running":
+                if status == "running":
                     return
 
-                if state in ("stopped", "paused"):
+                if status in ("stopped", "paused", "deleted"):
                     raise SandboxError(
-                        f"Sandbox {sandbox_id} is in unexpected state: {state}"
+                        f"Sandbox {sandbox_id} is in unexpected status: {status}"
                     )
 
                 # Continue waiting if still creating
@@ -499,15 +514,16 @@ class HopxProvider(SandboxProvider):
         Returns:
             Sandbox object
         """
-        # Map Hopx state to SandboxState enum
-        state_str = api_data.get("state", "running").lower()
-        state_map = {
+        # Map Hopx status to SandboxState enum (API uses "status" field)
+        status_str = api_data.get("status", api_data.get("state", "running")).lower()
+        status_map = {
             "running": SandboxState.RUNNING,
             "stopped": SandboxState.STOPPED,
             "paused": SandboxState.STOPPED,
             "creating": SandboxState.RUNNING,  # Treat as running for simplicity
+            "deleted": SandboxState.STOPPED,
         }
-        state = state_map.get(state_str, SandboxState.RUNNING)
+        state = status_map.get(status_str, SandboxState.RUNNING)
 
         # Get local metadata
         async with self._lock:
@@ -521,8 +537,8 @@ class HopxProvider(SandboxProvider):
             created_at=local_metadata.get("created_at"),
             metadata={
                 "template": local_metadata.get("template") or api_data.get("template_id") or api_data.get("template_name"),
-                "public_host": api_data.get("public_host") or local_metadata.get("public_host"),
-                "api_state": state_str,
+                "public_host": api_data.get("public_host") or api_data.get("direct_url") or local_metadata.get("public_host"),
+                "api_status": status_str,
                 **api_data,
             },
         )
@@ -553,6 +569,7 @@ class HopxProvider(SandboxProvider):
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         base_url: str | None = None,
+        auth_token: str | None = None,
     ) -> Any:
         """Make an HTTP request to the Hopx API.
 
@@ -574,8 +591,15 @@ class HopxProvider(SandboxProvider):
         headers = {
             "User-Agent": self._user_agent,
             "Content-Type": "application/json",
-            "X-API-Key": self.api_key,
         }
+
+        # Control plane uses X-API-Key, data plane uses Bearer token
+        if auth_token:
+            # Data plane authentication with JWT
+            headers["Authorization"] = f"Bearer {auth_token}"
+        elif self.api_key:
+            # Control plane authentication with API key
+            headers["X-API-Key"] = self.api_key
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout)) as client:
             try:
@@ -622,9 +646,10 @@ class HopxProvider(SandboxProvider):
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        auth_token: str | None = None,
     ) -> Any:
         """Make a GET request to the data plane API."""
-        return await self._request("GET", path, params=params, base_url=data_plane_url)
+        return await self._request("GET", path, params=params, base_url=data_plane_url, auth_token=auth_token)
 
     async def _post_to_data_plane(
         self,
@@ -632,9 +657,10 @@ class HopxProvider(SandboxProvider):
         path: str,
         *,
         json: dict[str, Any] | None = None,
+        auth_token: str | None = None,
     ) -> Any:
         """Make a POST request to the data plane API."""
-        return await self._request("POST", path, json=json, base_url=data_plane_url)
+        return await self._request("POST", path, json=json, base_url=data_plane_url, auth_token=auth_token)
 
     @staticmethod
     def _extract_error_message(response: httpx.Response) -> str:
