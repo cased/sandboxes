@@ -373,10 +373,20 @@ async def test_hopx_template_selection():
         async def side_effect(method, path, json=None, **kwargs):
             if method == "POST" and path == "/v1/sandboxes":
                 # Verify template is passed
-                assert json["templateId"] == "nodejs"
-                return {"id": sandbox_id, "state": "creating", "templateId": "nodejs"}
+                assert json["template_name"] == "nodejs"
+                return {
+                    "id": sandbox_id,
+                    "status": "running",
+                    "template_name": "nodejs",
+                    "auth_token": "test-jwt-token",
+                    "public_host": "https://template-test.hopx.dev",
+                }
             elif method == "GET" and path == f"/v1/sandboxes/{sandbox_id}":
-                return {"id": sandbox_id, "state": "running", "templateId": "nodejs"}
+                return {
+                    "id": sandbox_id,
+                    "status": "running",
+                    "template_name": "nodejs",
+                }
 
         mock_request.side_effect = side_effect
 
