@@ -42,8 +42,7 @@ async def benchmark_hopx():
     # Test 2: Sandbox Creation
     print("🚀 Test 2: Sandbox Creation (template: base)")
     config = SandboxConfig(
-        labels={"benchmark": "hopx", "test": "performance"},
-        provider_config={"template": "base"}
+        labels={"benchmark": "hopx", "test": "performance"}, provider_config={"template": "base"}
     )
 
     start = time.time()
@@ -105,7 +104,7 @@ async def benchmark_hopx():
         print("📤 Test 5: File Upload")
 
         # Create a test file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
             test_content = "Hopx benchmark test file\n" * 100
             f.write(test_content)
             local_path = f.name
@@ -113,9 +112,7 @@ async def benchmark_hopx():
         try:
             start = time.time()
             success = await provider.upload_file(
-                sandbox.id,
-                local_path,
-                "/workspace/benchmark_test.txt"
+                sandbox.id, local_path, "/workspace/benchmark_test.txt"
             )
             duration = time.time() - start
 
@@ -129,15 +126,13 @@ async def benchmark_hopx():
         # Test 6: File Download
         print("📥 Test 6: File Download")
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as f:
             download_path = f.name
 
         try:
             start = time.time()
             success = await provider.download_file(
-                sandbox.id,
-                "/workspace/benchmark_test.txt",
-                download_path
+                sandbox.id, "/workspace/benchmark_test.txt", download_path
             )
             duration = time.time() - start
 

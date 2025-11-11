@@ -87,8 +87,9 @@ async def test_hopx_missing_api_key():
     """Provider should raise ProviderError if API key is not provided."""
     from sandboxes.exceptions import ProviderError
 
-    with patch.dict(os.environ, {}, clear=True), pytest.raises(
-        ProviderError, match="Hopx API key not provided"
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        pytest.raises(ProviderError, match="Hopx API key not provided"),
     ):
         HopxProvider()
 
@@ -285,7 +286,9 @@ async def test_hopx_find_sandbox_with_labels():
         async def mock_list_side_effect(labels=None):
             all_sandboxes = [sandbox1, sandbox2]
             if labels:
-                return [s for s in all_sandboxes if all(s.labels.get(k) == v for k, v in labels.items())]
+                return [
+                    s for s in all_sandboxes if all(s.labels.get(k) == v for k, v in labels.items())
+                ]
             return all_sandboxes
 
         mock_list.side_effect = mock_list_side_effect

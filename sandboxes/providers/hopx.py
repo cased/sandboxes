@@ -92,9 +92,7 @@ class HopxProvider(SandboxProvider):
         """
         # Determine template from config or use default
         template = (
-            config.provider_config.get("template")
-            if config.provider_config
-            else None
+            config.provider_config.get("template") if config.provider_config else None
         ) or self.default_template
 
         # Prepare creation payload
@@ -217,7 +215,9 @@ class HopxProvider(SandboxProvider):
         if not public_host or not auth_token:
             sandbox_info = await self.get_sandbox(sandbox_id)
             if sandbox_info:
-                public_host = sandbox_info.metadata.get("public_host") or sandbox_info.metadata.get("direct_url")
+                public_host = sandbox_info.metadata.get("public_host") or sandbox_info.metadata.get(
+                    "direct_url"
+                )
                 auth_token = sandbox_info.metadata.get("auth_token")
                 # Cache for future use
                 async with self._lock:
@@ -485,9 +485,7 @@ class HopxProvider(SandboxProvider):
                     return
 
                 if status in ("stopped", "paused", "deleted"):
-                    raise SandboxError(
-                        f"Sandbox {sandbox_id} is in unexpected status: {status}"
-                    )
+                    raise SandboxError(f"Sandbox {sandbox_id} is in unexpected status: {status}")
 
                 # Continue waiting if still creating
                 await asyncio.sleep(poll_interval)
@@ -495,9 +493,7 @@ class HopxProvider(SandboxProvider):
             except SandboxNotFoundError:
                 raise SandboxError(f"Sandbox {sandbox_id} not found during creation") from None
 
-        raise SandboxError(
-            f"Sandbox {sandbox_id} did not become ready within {max_wait} seconds"
-        )
+        raise SandboxError(f"Sandbox {sandbox_id} did not become ready within {max_wait} seconds")
 
     async def _to_sandbox(self, sandbox_id: str, api_data: dict[str, Any]) -> Sandbox:
         """Convert API response to Sandbox object.
@@ -531,8 +527,12 @@ class HopxProvider(SandboxProvider):
             labels=local_metadata.get("labels", {}),
             created_at=local_metadata.get("created_at"),
             metadata={
-                "template": local_metadata.get("template") or api_data.get("template_id") or api_data.get("template_name"),
-                "public_host": api_data.get("public_host") or api_data.get("direct_url") or local_metadata.get("public_host"),
+                "template": local_metadata.get("template")
+                or api_data.get("template_id")
+                or api_data.get("template_name"),
+                "public_host": api_data.get("public_host")
+                or api_data.get("direct_url")
+                or local_metadata.get("public_host"),
                 "api_status": status_str,
                 **api_data,
             },
@@ -644,7 +644,9 @@ class HopxProvider(SandboxProvider):
         auth_token: str | None = None,
     ) -> Any:
         """Make a GET request to the data plane API."""
-        return await self._request("GET", path, params=params, base_url=data_plane_url, auth_token=auth_token)
+        return await self._request(
+            "GET", path, params=params, base_url=data_plane_url, auth_token=auth_token
+        )
 
     async def _post_to_data_plane(
         self,
@@ -655,7 +657,9 @@ class HopxProvider(SandboxProvider):
         auth_token: str | None = None,
     ) -> Any:
         """Make a POST request to the data plane API."""
-        return await self._request("POST", path, json=json, base_url=data_plane_url, auth_token=auth_token)
+        return await self._request(
+            "POST", path, json=json, base_url=data_plane_url, auth_token=auth_token
+        )
 
     @staticmethod
     def _extract_error_message(response: httpx.Response) -> str:
