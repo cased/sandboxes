@@ -174,9 +174,8 @@ class HopxProvider(SandboxProvider):
             sandbox = await self._to_sandbox(sandbox_id, sandbox_data)
 
             # Apply label filtering
-            if labels:
-                if not all(sandbox.labels.get(k) == v for k, v in labels.items()):
-                    continue
+            if labels and not all(sandbox.labels.get(k) == v for k, v in labels.items()):
+                continue
 
             sandboxes.append(sandbox)
 
@@ -390,10 +389,6 @@ class HopxProvider(SandboxProvider):
             if sandbox_id in self._sandboxes:
                 self._sandboxes[sandbox_id]["last_accessed"] = time.time()
 
-        # Apply environment variables
-        command_to_run = self._apply_env_vars_to_command(command, env_vars)
-
-        # Try WebSocket streaming endpoint
         # For now, fall back to simulated streaming from regular execution
         # TODO: Implement WebSocket streaming when needed
         result = await self.execute_command(sandbox_id, command, timeout, env_vars)
@@ -498,7 +493,7 @@ class HopxProvider(SandboxProvider):
                 await asyncio.sleep(poll_interval)
 
             except SandboxNotFoundError:
-                raise SandboxError(f"Sandbox {sandbox_id} not found during creation")
+                raise SandboxError(f"Sandbox {sandbox_id} not found during creation") from None
 
         raise SandboxError(
             f"Sandbox {sandbox_id} did not become ready within {max_wait} seconds"

@@ -3,7 +3,7 @@
 import json
 import os
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -112,9 +112,10 @@ async def test_hopx_missing_api_key():
     """Provider should raise ProviderError if API key is not provided."""
     from sandboxes.exceptions import ProviderError
 
-    with patch.dict(os.environ, {}, clear=True):
-        with pytest.raises(ProviderError, match="Hopx API key not provided"):
-            HopxProvider()
+    with patch.dict(os.environ, {}, clear=True), pytest.raises(
+        ProviderError, match="Hopx API key not provided"
+    ):
+        HopxProvider()
 
 
 @pytest.mark.asyncio

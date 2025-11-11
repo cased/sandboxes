@@ -76,7 +76,13 @@ class Sandbox:
         The first registered provider becomes the default unless explicitly set.
         Users can override with Sandbox.configure(default_provider="...").
         """
-        from .providers import CloudflareProvider, DaytonaProvider, E2BProvider, HopxProvider, ModalProvider
+        from .providers import (
+            CloudflareProvider,
+            DaytonaProvider,
+            E2BProvider,
+            HopxProvider,
+            ModalProvider,
+        )
 
         manager = cls._manager
 
@@ -151,7 +157,13 @@ class Sandbox:
                 default_provider="hopx"
             )
         """
-        from .providers import CloudflareProvider, DaytonaProvider, E2BProvider, HopxProvider, ModalProvider
+        from .providers import (
+            CloudflareProvider,
+            DaytonaProvider,
+            E2BProvider,
+            HopxProvider,
+            ModalProvider,
+        )
 
         manager = cls._ensure_manager()
 

@@ -177,7 +177,7 @@ async def benchmark_hopx():
         sandboxes = await provider.list_sandboxes()
         duration = time.time() - start
 
-        print(f"   Result: ✅ PASS")
+        print("   Result: ✅ PASS")
         print(f"   Duration: {duration:.3f}s")
         print(f"   Sandboxes found: {len(sandboxes)}")
         print()
