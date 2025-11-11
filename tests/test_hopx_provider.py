@@ -1,11 +1,9 @@
 """Tests for the Hopx sandbox provider."""
 
-import json
 import os
 import tempfile
 from unittest.mock import patch
 
-import httpx
 import pytest
 
 from sandboxes.base import SandboxConfig
@@ -17,47 +15,6 @@ from sandboxes.providers.hopx import HopxProvider
 async def test_hopx_happy_path():
     """Create, execute, list, destroy, and health-check a Hopx sandbox."""
     sandbox_id = "hopx-test-123"
-    responses = {
-        ("POST", "/v1/sandboxes"): httpx.Response(
-            200,
-            json={"id": sandbox_id, "state": "creating", "templateId": "python"},
-        ),
-        ("GET", f"/v1/sandboxes/{sandbox_id}"): httpx.Response(
-            200,
-            json={"id": sandbox_id, "state": "running", "templateId": "python"},
-        ),
-        ("GET", "/v1/sandboxes"): httpx.Response(
-            200,
-            json={"sandboxes": [{"id": sandbox_id, "state": "running", "templateId": "python"}]},
-        ),
-        ("POST", "/commands/run"): httpx.Response(
-            200,
-            json={"stdout": "hello\n", "stderr": "", "exitCode": 0, "duration": 100},
-        ),
-        ("DELETE", f"/v1/sandboxes/{sandbox_id}"): httpx.Response(
-            200,
-            json={"success": True},
-        ),
-    }
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        key = (request.method, request.url.path)
-        response = responses.get(key)
-        if response is None:
-            return httpx.Response(404, json={"error": "Not found"})
-
-        # Validate request headers
-        assert "X-API-Key" in request.headers
-        assert request.headers["X-API-Key"] == "test-key"
-
-        # Validate command execution request
-        if request.url.path == "/commands/run":
-            payload = json.loads(request.content.decode())
-            assert "command" in payload
-            assert "echo hello" in payload["command"]
-
-        return response
-
     provider = HopxProvider(api_key="test-key")
 
     # Mock the transport for both control plane and data plane
@@ -70,12 +27,30 @@ async def test_hopx_happy_path():
 
             # Control plane requests
             if path == "/v1/sandboxes" and method == "POST":
-                return {"id": sandbox_id, "state": "creating", "templateId": "python"}
+                return {
+                    "id": sandbox_id,
+                    "status": "running",
+                    "template_name": "code-interpreter",
+                    "auth_token": "test-jwt-token",
+                    "public_host": "https://hopx-test-123.hopx.dev",
+                }
             elif path == f"/v1/sandboxes/{sandbox_id}" and method == "GET":
                 # First call during wait_for_ready, second during get_sandbox
-                return {"id": sandbox_id, "state": "running", "templateId": "python"}
+                return {
+                    "id": sandbox_id,
+                    "status": "running",
+                    "template_name": "code-interpreter",
+                }
             elif path == "/v1/sandboxes" and method == "GET":
-                return {"sandboxes": [{"id": sandbox_id, "state": "running", "templateId": "python"}]}
+                return {
+                    "sandboxes": [
+                        {
+                            "id": sandbox_id,
+                            "status": "running",
+                            "template_name": "code-interpreter",
+                        }
+                    ]
+                }
             elif path == f"/v1/sandboxes/{sandbox_id}" and method == "DELETE":
                 return {"success": True}
             # Data plane requests
@@ -258,27 +233,27 @@ async def test_hopx_sandbox_state_mapping():
 
         async def side_effect(method, path, **kwargs):
             if "creating" in path:
-                return {"id": sandbox_id, "state": "creating"}
+                return {"id": sandbox_id, "status": "creating"}
             elif "running" in path:
-                return {"id": sandbox_id, "state": "running"}
+                return {"id": sandbox_id, "status": "running"}
             elif "stopped" in path:
-                return {"id": sandbox_id, "state": "stopped"}
+                return {"id": sandbox_id, "status": "stopped"}
             elif "paused" in path:
-                return {"id": sandbox_id, "state": "paused"}
+                return {"id": sandbox_id, "status": "paused"}
 
         mock_request.side_effect = side_effect
 
-        # Test each state
-        sandbox_creating = await provider._to_sandbox(sandbox_id, {"state": "creating"})
+        # Test each status
+        sandbox_creating = await provider._to_sandbox(sandbox_id, {"status": "creating"})
         assert sandbox_creating.state == SandboxState.RUNNING  # Treated as running
 
-        sandbox_running = await provider._to_sandbox(sandbox_id, {"state": "running"})
+        sandbox_running = await provider._to_sandbox(sandbox_id, {"status": "running"})
         assert sandbox_running.state == SandboxState.RUNNING
 
-        sandbox_stopped = await provider._to_sandbox(sandbox_id, {"state": "stopped"})
+        sandbox_stopped = await provider._to_sandbox(sandbox_id, {"status": "stopped"})
         assert sandbox_stopped.state == SandboxState.STOPPED
 
-        sandbox_paused = await provider._to_sandbox(sandbox_id, {"state": "paused"})
+        sandbox_paused = await provider._to_sandbox(sandbox_id, {"status": "paused"})
         assert sandbox_paused.state == SandboxState.STOPPED  # Paused treated as stopped
 
 
