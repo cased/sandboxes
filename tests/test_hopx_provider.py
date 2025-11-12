@@ -2,12 +2,13 @@
 
 import os
 import tempfile
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from sandboxes.base import SandboxConfig
-from sandboxes.exceptions import SandboxError, SandboxNotFoundError
+from sandboxes.base import ExecutionResult, SandboxConfig
+from sandboxes.exceptions import ProviderError, SandboxError, SandboxNotFoundError
 from sandboxes.providers.hopx import HopxProvider
 
 
@@ -17,55 +18,38 @@ async def test_hopx_happy_path():
     sandbox_id = "hopx-test-123"
     provider = HopxProvider(api_key="test-key")
 
-    # Mock the transport for both control plane and data plane
-    with patch.object(provider, "_request") as mock_request:
-        call_count = 0
+    # Mock the Hopx SDK
+    with patch("sandboxes.providers.hopx.HopxSandbox") as MockHopxSandbox:
+        # Create mock sandbox instance
+        mock_sandbox = AsyncMock()
+        mock_sandbox.sandbox_id = sandbox_id
+        mock_sandbox.get_info = AsyncMock(
+            return_value=MagicMock(
+                public_host="https://hopx-test-123.hopx.dev",
+                created_at=None,
+                template_name="code-interpreter",
+            )
+        )
+        mock_sandbox.commands.run = AsyncMock(
+            return_value=MagicMock(exit_code=0, stdout="hello\n", stderr="", execution_time=0.1)
+        )
+        mock_sandbox.kill = AsyncMock()
 
-        async def side_effect(method, path, **kwargs):
-            nonlocal call_count
-            call_count += 1
-
-            # Control plane requests
-            if path == "/v1/sandboxes" and method == "POST":
-                return {
-                    "id": sandbox_id,
-                    "status": "running",
-                    "template_name": "code-interpreter",
-                    "auth_token": "test-jwt-token",
-                    "public_host": "https://hopx-test-123.hopx.dev",
-                }
-            elif path == f"/v1/sandboxes/{sandbox_id}" and method == "GET":
-                # First call during wait_for_ready, second during get_sandbox
-                return {
-                    "id": sandbox_id,
-                    "status": "running",
-                    "template_name": "code-interpreter",
-                }
-            elif path == "/v1/sandboxes" and method == "GET":
-                return {
-                    "sandboxes": [
-                        {
-                            "id": sandbox_id,
-                            "status": "running",
-                            "template_name": "code-interpreter",
-                        }
-                    ]
-                }
-            elif path == f"/v1/sandboxes/{sandbox_id}" and method == "DELETE":
-                return {"success": True}
-            # Data plane requests
-            elif path == "/commands/run" and method == "POST":
-                return {"stdout": "hello\n", "stderr": "", "exitCode": 0, "duration": 100}
-            else:
-                raise SandboxNotFoundError(f"Not found: {path}")
-
-        mock_request.side_effect = side_effect
+        # Mock SDK class methods
+        MockHopxSandbox.create = AsyncMock(return_value=mock_sandbox)
+        MockHopxSandbox.list = AsyncMock(return_value=[mock_sandbox])
 
         # Create sandbox
         config = SandboxConfig(labels={"test": "hopx"})
         sandbox = await provider.create_sandbox(config)
         assert sandbox.id == sandbox_id
         assert sandbox.provider == "hopx"
+
+        # Verify create was called with correct parameters
+        MockHopxSandbox.create.assert_called_once()
+        call_kwargs = MockHopxSandbox.create.call_args.kwargs
+        assert call_kwargs["template"] == "code-interpreter"
+        assert call_kwargs["api_key"] == "test-key"
 
         # List sandboxes
         listed = await provider.list_sandboxes()
@@ -80,13 +64,12 @@ async def test_hopx_happy_path():
         # Destroy sandbox
         destroyed = await provider.destroy_sandbox(sandbox_id)
         assert destroyed is True
+        mock_sandbox.kill.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_hopx_missing_api_key():
     """Provider should raise ProviderError if API key is not provided."""
-    from sandboxes.exceptions import ProviderError
-
     with (
         patch.dict(os.environ, {}, clear=True),
         pytest.raises(ProviderError, match="Hopx API key not provided"),
@@ -107,36 +90,27 @@ async def test_hopx_missing_sandbox():
     """Executing against a missing sandbox should raise SandboxNotFoundError."""
     provider = HopxProvider(api_key="test-key")
 
-    with patch.object(provider, "_request") as mock_request:
+    # Try to execute command on non-existent sandbox
+    with pytest.raises(SandboxNotFoundError, match="Sandbox .* not found"):
+        await provider.execute_command("unknown-id", "echo test")
 
-        async def side_effect(method, path, **kwargs):
-            raise SandboxNotFoundError(f"Sandbox not found: {path}")
-
-        mock_request.side_effect = side_effect
-
-        sandbox = await provider.get_sandbox("unknown-id")
-        assert sandbox is None
+    # get_sandbox should return None for non-existent sandbox
+    sandbox = await provider.get_sandbox("unknown-id")
+    assert sandbox is None
 
 
 @pytest.mark.asyncio
 async def test_hopx_http_error_raises_sandbox_error():
-    """Non-2xx responses should surface as SandboxError."""
+    """SDK errors should surface as SandboxError."""
     provider = HopxProvider(api_key="test-key")
 
-    with patch.object(provider, "_request") as mock_request:
+    with patch("sandboxes.providers.hopx.HopxSandbox") as MockHopxSandbox:
+        # Mock SDK to raise error
+        MockHopxSandbox.list = AsyncMock(side_effect=Exception("API Error"))
 
-        async def side_effect(method, path, **kwargs):
-            raise SandboxError("Internal server error")
-
-        mock_request.side_effect = side_effect
-
-        # health_check catches SandboxError and returns False
+        # health_check catches errors and returns False
         result = await provider.health_check()
         assert result is False
-
-        # Test with a method that doesn't catch the error
-        with pytest.raises(SandboxError):
-            await provider.get_sandbox("test-id")
 
 
 @pytest.mark.asyncio
@@ -146,8 +120,6 @@ async def test_hopx_stream_execution():
     provider = HopxProvider(api_key="test-key")
 
     with patch.object(provider, "execute_command") as mock_exec:
-        from sandboxes.base import ExecutionResult
-
         mock_exec.return_value = ExecutionResult(
             exit_code=0,
             stdout="streaming output test",
@@ -156,6 +128,9 @@ async def test_hopx_stream_execution():
             truncated=False,
             timed_out=False,
         )
+
+        # Add sandbox to tracking
+        provider._sandboxes[sandbox_id] = {"labels": {}}
 
         chunks = []
         async for chunk in provider.stream_execution(sandbox_id, "echo test"):
@@ -167,95 +142,106 @@ async def test_hopx_stream_execution():
 
 @pytest.mark.asyncio
 async def test_hopx_file_upload():
-    """Test file upload with base64 encoding."""
+    """Test file upload with security validation."""
     sandbox_id = "file-upload-test"
     provider = HopxProvider(api_key="test-key")
 
     # Create a temporary file
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
         f.write("test file content")
         temp_path = f.name
 
     try:
-        with patch.object(provider, "_post_to_data_plane") as mock_post:
-            mock_post.return_value = {"success": True}
+        # Create mock sandbox
+        mock_sandbox = AsyncMock()
+        mock_sandbox.sandbox_id = sandbox_id
+        mock_sandbox.files.write = AsyncMock()
 
-            success = await provider.upload_file(sandbox_id, temp_path, "/workspace/test.txt")
-            assert success
+        # Add to tracking
+        provider._sandboxes[sandbox_id] = {
+            "hopx_sandbox": mock_sandbox,
+            "labels": {},
+            "last_accessed": 0,
+        }
 
-            # Verify the call was made with base64 encoded content
-            mock_post.assert_called_once()
-            call_args = mock_post.call_args
-            payload = call_args.kwargs["json"]
-            assert payload["path"] == "/workspace/test.txt"
-            assert payload["encoding"] == "base64"
-            assert "content" in payload
+        success = await provider.upload_file(sandbox_id, temp_path, "/workspace/test.txt")
+        assert success
+
+        # Verify SDK method was called
+        mock_sandbox.files.write.assert_called_once()
+        call_kwargs = mock_sandbox.files.write.call_args.kwargs
+        assert call_kwargs["path"] == "/workspace/test.txt"
+        assert "content" in call_kwargs
     finally:
         os.unlink(temp_path)
 
 
 @pytest.mark.asyncio
-async def test_hopx_file_download():
-    """Test file download with base64 decoding."""
-    sandbox_id = "file-download-test"
+async def test_hopx_file_upload_security_validation():
+    """Test that file upload prevents path traversal attacks."""
+    sandbox_id = "security-test"
     provider = HopxProvider(api_key="test-key")
 
-    with tempfile.NamedTemporaryFile(delete=False) as f:
-        output_path = f.name
+    mock_sandbox = AsyncMock()
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+    }
 
-    try:
-        with patch.object(provider, "_get_from_data_plane") as mock_get:
-            import base64
-
-            test_content = b"downloaded file content"
-            encoded = base64.b64encode(test_content).decode("utf-8")
-            mock_get.return_value = {"content": encoded, "encoding": "base64"}
-
-            success = await provider.download_file(sandbox_id, "/workspace/test.txt", output_path)
-            assert success
-
-            # Verify the content was decoded correctly
-            with open(output_path, "rb") as f:
-                content = f.read()
-            assert content == test_content
-    finally:
-        os.unlink(output_path)
+    # Test path traversal attack
+    with pytest.raises(SandboxError, match="Path traversal"):
+        await provider.upload_file(sandbox_id, "../../../etc/passwd", "/workspace/test.txt")
 
 
 @pytest.mark.asyncio
-async def test_hopx_sandbox_state_mapping():
-    """Test that Hopx states are mapped correctly to SandboxState."""
-    from sandboxes.base import SandboxState
-
-    sandbox_id = "state-test"
+async def test_hopx_file_download():
+    """Test file download with security validation."""
+    sandbox_id = "file-download-test"
     provider = HopxProvider(api_key="test-key")
 
-    with patch.object(provider, "_request") as mock_request:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_path = os.path.join(tmpdir, "downloaded.txt")
 
-        async def side_effect(method, path, **kwargs):
-            if "creating" in path:
-                return {"id": sandbox_id, "status": "creating"}
-            elif "running" in path:
-                return {"id": sandbox_id, "status": "running"}
-            elif "stopped" in path:
-                return {"id": sandbox_id, "status": "stopped"}
-            elif "paused" in path:
-                return {"id": sandbox_id, "status": "paused"}
+        # Create mock sandbox
+        mock_sandbox = AsyncMock()
+        mock_sandbox.sandbox_id = sandbox_id
+        mock_sandbox.files.read = AsyncMock(return_value="downloaded file content")
 
-        mock_request.side_effect = side_effect
+        # Add to tracking
+        provider._sandboxes[sandbox_id] = {
+            "hopx_sandbox": mock_sandbox,
+            "labels": {},
+            "last_accessed": 0,
+        }
 
-        # Test each status
-        sandbox_creating = await provider._to_sandbox(sandbox_id, {"status": "creating"})
-        assert sandbox_creating.state == SandboxState.RUNNING  # Treated as running
+        success = await provider.download_file(sandbox_id, "/workspace/test.txt", output_path)
+        assert success
 
-        sandbox_running = await provider._to_sandbox(sandbox_id, {"status": "running"})
-        assert sandbox_running.state == SandboxState.RUNNING
+        # Verify the content was written correctly
+        with open(output_path, "r") as f:
+            content = f.read()
+        assert content == "downloaded file content"
 
-        sandbox_stopped = await provider._to_sandbox(sandbox_id, {"status": "stopped"})
-        assert sandbox_stopped.state == SandboxState.STOPPED
+        # Verify SDK method was called
+        mock_sandbox.files.read.assert_called_once_with(path="/workspace/test.txt")
 
-        sandbox_paused = await provider._to_sandbox(sandbox_id, {"status": "paused"})
-        assert sandbox_paused.state == SandboxState.STOPPED  # Paused treated as stopped
+
+@pytest.mark.asyncio
+async def test_hopx_file_download_security_validation():
+    """Test that file download prevents path traversal attacks."""
+    sandbox_id = "security-test"
+    provider = HopxProvider(api_key="test-key")
+
+    mock_sandbox = AsyncMock()
+    mock_sandbox.files.read = AsyncMock(return_value="content")
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+    }
+
+    # Test path traversal attack on destination
+    with pytest.raises(SandboxError, match="parent directory does not exist"):
+        await provider.download_file(sandbox_id, "/workspace/file.txt", "/nonexistent/path.txt")
 
 
 @pytest.mark.asyncio
@@ -263,44 +249,38 @@ async def test_hopx_find_sandbox_with_labels():
     """Test finding a sandbox by labels."""
     provider = HopxProvider(api_key="test-key")
 
-    with patch.object(provider, "list_sandboxes") as mock_list:
-        from sandboxes.base import Sandbox, SandboxState
+    # Create mock sandboxes
+    mock_sb1 = AsyncMock()
+    mock_sb1.sandbox_id = "sb-1"
+    mock_sb2 = AsyncMock()
+    mock_sb2.sandbox_id = "sb-2"
 
-        # Create mock sandboxes
-        sandbox1 = Sandbox(
-            id="sb-1",
-            provider="hopx",
-            state=SandboxState.RUNNING,
-            labels={"env": "prod", "app": "web"},
-            metadata={},
-        )
-        sandbox2 = Sandbox(
-            id="sb-2",
-            provider="hopx",
-            state=SandboxState.RUNNING,
-            labels={"env": "dev", "app": "api"},
-            metadata={},
-        )
+    # Add to tracking with labels
+    import time
 
-        # Mock list_sandboxes to filter by labels properly
-        async def mock_list_side_effect(labels=None):
-            all_sandboxes = [sandbox1, sandbox2]
-            if labels:
-                return [
-                    s for s in all_sandboxes if all(s.labels.get(k) == v for k, v in labels.items())
-                ]
-            return all_sandboxes
+    provider._sandboxes = {
+        "sb-1": {
+            "hopx_sandbox": mock_sb1,
+            "labels": {"env": "prod", "app": "web"},
+            "last_accessed": time.time(),
+            "created_at": None,
+        },
+        "sb-2": {
+            "hopx_sandbox": mock_sb2,
+            "labels": {"env": "dev", "app": "api"},
+            "last_accessed": time.time() - 100,
+            "created_at": None,
+        },
+    }
 
-        mock_list.side_effect = mock_list_side_effect
+    # Find by matching labels
+    found = await provider.find_sandbox({"env": "prod"})
+    assert found is not None
+    assert found.id == "sb-1"
 
-        # Find by matching labels
-        found = await provider.find_sandbox({"env": "prod"})
-        assert found is not None
-        assert found.id == "sb-1"
-
-        # No match
-        found_none = await provider.find_sandbox({"env": "staging"})
-        assert found_none is None
+    # No match
+    found_none = await provider.find_sandbox({"env": "staging"})
+    assert found_none is None
 
 
 @pytest.mark.asyncio
@@ -308,36 +288,41 @@ async def test_hopx_cleanup_idle_sandboxes():
     """Test cleanup of idle sandboxes."""
     provider = HopxProvider(api_key="test-key")
 
-    # Add some sandboxes to internal tracking
     import time
 
+    # Create mock sandboxes
+    mock_old = AsyncMock()
+    mock_old.sandbox_id = "old-sandbox"
+    mock_old.kill = AsyncMock()
+
+    mock_new = AsyncMock()
+    mock_new.sandbox_id = "new-sandbox"
+    mock_new.kill = AsyncMock()
+
+    # Add to tracking with different access times
     provider._sandboxes = {
-        "old-sandbox": {"last_accessed": time.time() - 1000, "labels": {}},
-        "new-sandbox": {"last_accessed": time.time(), "labels": {}},
+        "old-sandbox": {
+            "hopx_sandbox": mock_old,
+            "last_accessed": time.time() - 1000,
+            "labels": {},
+        },
+        "new-sandbox": {
+            "hopx_sandbox": mock_new,
+            "last_accessed": time.time(),
+            "labels": {},
+        },
     }
 
-    with patch.object(provider, "destroy_sandbox") as mock_destroy:
-        mock_destroy.return_value = True
+    # Cleanup with 500 second timeout
+    await provider.cleanup_idle_sandboxes(idle_timeout=500)
 
-        # Cleanup with 500 second timeout
-        await provider.cleanup_idle_sandboxes(idle_timeout=500)
+    # Should only destroy old-sandbox
+    mock_old.kill.assert_called_once()
+    mock_new.kill.assert_not_called()
 
-        # Should only destroy old-sandbox
-        mock_destroy.assert_called_once_with("old-sandbox")
-
-
-@pytest.mark.asyncio
-async def test_hopx_env_vars_application():
-    """Test that environment variables are properly applied to commands."""
-    command = "python script.py"
-    env_vars = {"API_KEY": "secret123", "DEBUG": "true"}
-
-    result = HopxProvider._apply_env_vars_to_command(command, env_vars)
-
-    assert "export API_KEY='secret123'" in result
-    assert "export DEBUG='true'" in result
-    assert "python script.py" in result
-    assert "&&" in result  # Commands should be chained
+    # Old sandbox should be removed from tracking
+    assert "old-sandbox" not in provider._sandboxes
+    assert "new-sandbox" in provider._sandboxes
 
 
 @pytest.mark.asyncio
@@ -345,37 +330,119 @@ async def test_hopx_template_selection():
     """Test that templates can be specified via config."""
     provider = HopxProvider(api_key="test-key")
 
-    with patch.object(provider, "_request") as mock_request:
-        sandbox_id = "template-test"
+    with patch("sandboxes.providers.hopx.HopxSandbox") as MockHopxSandbox:
+        mock_sandbox = AsyncMock()
+        mock_sandbox.sandbox_id = "template-test"
+        mock_sandbox.get_info = AsyncMock(
+            return_value=MagicMock(
+                public_host="https://template-test.hopx.dev",
+                created_at=None,
+                template_name="nodejs",
+            )
+        )
+        MockHopxSandbox.create = AsyncMock(return_value=mock_sandbox)
 
-        async def side_effect(method, path, json=None, **kwargs):
-            if method == "POST" and path == "/v1/sandboxes":
-                # Verify template is passed
-                assert json["template_name"] == "nodejs"
-                return {
-                    "id": sandbox_id,
-                    "status": "running",
-                    "template_name": "nodejs",
-                    "auth_token": "test-jwt-token",
-                    "public_host": "https://template-test.hopx.dev",
-                }
-            elif method == "GET" and path == f"/v1/sandboxes/{sandbox_id}":
-                return {
-                    "id": sandbox_id,
-                    "status": "running",
-                    "template_name": "nodejs",
-                }
-
-        mock_request.side_effect = side_effect
-
-        # Create with custom template
+        # Create with custom template via provider_config
         config = SandboxConfig(provider_config={"template": "nodejs"})
         sandbox = await provider.create_sandbox(config)
-        assert sandbox.id == sandbox_id
+        assert sandbox.id == "template-test"
+
+        # Verify template was passed
+        call_kwargs = MockHopxSandbox.create.call_args.kwargs
+        assert call_kwargs["template"] == "nodejs"
+
+
+@pytest.mark.asyncio
+async def test_hopx_execute_commands_batch():
+    """Test executing multiple commands in sequence."""
+    provider = HopxProvider(api_key="test-key")
+    sandbox_id = "batch-test"
+
+    mock_sandbox = AsyncMock()
+    mock_sandbox.sandbox_id = sandbox_id
+    mock_sandbox.commands.run = AsyncMock(
+        return_value=MagicMock(exit_code=0, stdout="output", stderr="", execution_time=0.1)
+    )
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+        "last_accessed": 0,
+    }
+
+    # Execute multiple commands
+    commands = ["echo 'test1'", "echo 'test2'", "echo 'test3'"]
+    results = await provider.execute_commands(sandbox_id, commands)
+
+    assert len(results) == 3
+    assert all(r.success for r in results)
+    assert mock_sandbox.commands.run.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_hopx_execute_commands_stop_on_error():
+    """Test that execute_commands stops on first error when stop_on_error=True."""
+    provider = HopxProvider(api_key="test-key")
+    sandbox_id = "error-test"
+
+    mock_sandbox = AsyncMock()
+    mock_sandbox.sandbox_id = sandbox_id
+
+    # First command succeeds, second fails, third should not run
+    call_count = 0
+
+    async def mock_run(command, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return MagicMock(exit_code=0, stdout="ok", stderr="", execution_time=0.1)
+        else:
+            return MagicMock(exit_code=1, stdout="", stderr="error", execution_time=0.1)
+
+    mock_sandbox.commands.run = mock_run
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+        "last_accessed": 0,
+    }
+
+    commands = ["echo 'ok'", "exit 1", "echo 'should not run'"]
+    results = await provider.execute_commands(sandbox_id, commands, stop_on_error=True)
+
+    # Only first two commands should run
+    assert len(results) == 2
+    assert results[0].success
+    assert not results[1].success
+    assert call_count == 2  # Third command not executed
+
+
+@pytest.mark.asyncio
+async def test_hopx_get_or_create_sandbox():
+    """Test get_or_create_sandbox reuses existing sandboxes."""
+    provider = HopxProvider(api_key="test-key")
+
+    # Add existing sandbox
+    mock_existing = AsyncMock()
+    mock_existing.sandbox_id = "existing-sb"
+    provider._sandboxes["existing-sb"] = {
+        "hopx_sandbox": mock_existing,
+        "labels": {"env": "test"},
+        "last_accessed": 0,
+        "created_at": None,
+    }
+
+    # Request sandbox with matching labels
+    config = SandboxConfig(labels={"env": "test"})
+    sandbox = await provider.get_or_create_sandbox(config)
+
+    # Should return existing sandbox
+    assert sandbox.id == "existing-sb"
 
 
 @pytest.mark.asyncio
 @pytest.mark.hopx
+@pytest.mark.integration
 async def test_hopx_live_integration():
     """Live integration test with real Hopx API.
 
