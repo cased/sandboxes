@@ -545,8 +545,9 @@ class HopxProvider(SandboxProvider):
         """Check if Hopx service is accessible."""
         try:
             # Try to list sandboxes as a simple health check
-            await HopxSandbox.list(api_key=self.api_key, base_url=self.base_url)
-            return True
+            sandboxes = await HopxSandbox.list(api_key=self.api_key, base_url=self.base_url)
+            # Handle case where API might return None instead of empty list
+            return sandboxes is not None
         except Exception as e:
             logger.error(f"Hopx health check failed: {e}")
             return False

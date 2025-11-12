@@ -708,3 +708,162 @@ async def test_hopx_live_integration():
     finally:
         # Clean up
         await provider.destroy_sandbox(sandbox.id)
+
+
+@pytest.mark.asyncio
+async def test_hopx_timeout_parameter_compatibility():
+    """Test that timeout parameter is correctly passed to SDK methods."""
+    provider = HopxProvider(api_key="test-key")
+    sandbox_id = "timeout-test"
+
+    # Mock the SDK sandbox and commands
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_sandbox = MagicMock()
+    mock_commands = MagicMock()
+    mock_commands.run = AsyncMock(
+        return_value=MagicMock(
+            exit_code=0, stdout="success", stderr="", execution_time=1.5
+        )
+    )
+    mock_sandbox.commands = mock_commands
+    mock_sandbox.run_code = AsyncMock(
+        return_value=MagicMock(
+            exit_code=0,
+            stdout="success",
+            stderr="",
+            execution_time=1.5,
+            success=True,
+            rich_outputs=[],
+        )
+    )
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+        "created_at": 0,
+        "last_accessed": 0,
+        "template": "test",
+    }
+
+    # Test execute_command with custom timeout
+    await provider.execute_command(sandbox_id, "echo test", timeout=45)
+    mock_commands.run.assert_called_with(command="echo test", timeout_seconds=45, env=None)
+
+    # Test run_code with custom timeout
+    await provider.run_code(sandbox_id, "print('test')", timeout=90)
+    mock_sandbox.run_code.assert_called_with(
+        code="print('test')", language="python", timeout_seconds=90, env=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_hopx_concurrent_command_execution():
+    """Test executing multiple commands concurrently in the same sandbox."""
+    provider = HopxProvider(api_key="test-key")
+    sandbox_id = "concurrent-test"
+
+    from unittest.mock import AsyncMock, MagicMock
+
+    call_count = 0
+
+    async def mock_run(command, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return MagicMock(
+            exit_code=0,
+            stdout=f"result-{call_count}",
+            stderr="",
+            execution_time=0.1,
+        )
+
+    mock_sandbox = MagicMock()
+    mock_commands = MagicMock()
+    mock_commands.run = AsyncMock(side_effect=mock_run)
+    mock_sandbox.commands = mock_commands
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+        "created_at": 0,
+        "last_accessed": 0,
+        "template": "test",
+    }
+
+    # Execute multiple commands concurrently
+    import asyncio
+
+    tasks = [
+        provider.execute_command(sandbox_id, f"echo test{i}")
+        for i in range(5)
+    ]
+    results = await asyncio.gather(*tasks)
+
+    # Verify all commands executed successfully
+    assert len(results) == 5
+    assert all(r.exit_code == 0 for r in results)
+    assert call_count == 5
+
+
+@pytest.mark.asyncio
+async def test_hopx_environment_variables_in_commands():
+    """Test that environment variables are properly passed to command execution."""
+    provider = HopxProvider(api_key="test-key")
+    sandbox_id = "env-test"
+
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_sandbox = MagicMock()
+    mock_commands = MagicMock()
+    mock_commands.run = AsyncMock(
+        return_value=MagicMock(
+            exit_code=0, stdout="API_KEY=secret123", stderr="", execution_time=0.1
+        )
+    )
+    mock_sandbox.commands = mock_commands
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+        "created_at": 0,
+        "last_accessed": 0,
+        "template": "test",
+    }
+
+    # Execute command with environment variables
+    env_vars = {"API_KEY": "secret123", "DEBUG": "true"}
+    result = await provider.execute_command(
+        sandbox_id, "echo $API_KEY", env_vars=env_vars
+    )
+
+    # Verify env vars were passed correctly
+    mock_commands.run.assert_called_once()
+    call_args = mock_commands.run.call_args
+    assert call_args.kwargs["env"] == env_vars
+    assert result.success
+
+
+@pytest.mark.asyncio
+async def test_hopx_health_check_handles_none_response():
+    """Test that health_check handles None response from SDK gracefully."""
+    provider = HopxProvider(api_key="test-key")
+
+    from unittest.mock import AsyncMock, patch
+
+    # Test with None response (should return False)
+    with patch("sandboxes.providers.hopx.HopxSandbox") as mock_hopx:
+        mock_hopx.list = AsyncMock(return_value=None)
+        result = await provider.health_check()
+        assert result is False  # Should return False when list returns None
+
+    # Test with empty list response (should return True)
+    with patch("sandboxes.providers.hopx.HopxSandbox") as mock_hopx:
+        mock_hopx.list = AsyncMock(return_value=[])
+        result = await provider.health_check()
+        assert result is True  # Should return True when list returns empty list
+
+    # Test with non-empty list response (should return True)
+    with patch("sandboxes.providers.hopx.HopxSandbox") as mock_hopx:
+        mock_hopx.list = AsyncMock(return_value=["sandbox1", "sandbox2"])
+        result = await provider.health_check()
+        assert result is True  # Should return True when list returns sandboxes
