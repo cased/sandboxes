@@ -135,5 +135,6 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "e2b: Tests specific to E2B provider")
     config.addinivalue_line("markers", "daytona: Tests specific to Daytona provider")
     config.addinivalue_line("markers", "modal: Tests specific to Modal provider")
+    config.addinivalue_line("markers", "hopx: Tests specific to Hopx provider")
     config.addinivalue_line("markers", "slow: Slow tests that might take a while")
     config.addinivalue_line("markers", "cloudflare: Tests specific to Cloudflare provider")
