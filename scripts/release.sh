@@ -98,7 +98,13 @@ echo "All required packages are installed."
 # 7. Run tests before release
 echo ""
 echo "Running tests to ensure everything works..."
-if command -v pytest &> /dev/null; then
+if command -v python3 &> /dev/null; then
+    echo "Running pytest via python3 -m pytest (excluding integration tests)..."
+    if ! python3 -m pytest tests/ -v --tb=short -m "not integration"; then
+        echo "Error: Tests failed. Please fix failing tests before releasing."
+        exit 1
+    fi
+elif command -v pytest &> /dev/null; then
     echo "Running pytest (excluding integration tests)..."
     if ! pytest tests/ -v --tb=short -m "not integration"; then
         echo "Error: Tests failed. Please fix failing tests before releasing."
