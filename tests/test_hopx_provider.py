@@ -722,9 +722,7 @@ async def test_hopx_timeout_parameter_compatibility():
     mock_sandbox = MagicMock()
     mock_commands = MagicMock()
     mock_commands.run = AsyncMock(
-        return_value=MagicMock(
-            exit_code=0, stdout="success", stderr="", execution_time=1.5
-        )
+        return_value=MagicMock(exit_code=0, stdout="success", stderr="", execution_time=1.5)
     )
     mock_sandbox.commands = mock_commands
     mock_sandbox.run_code = AsyncMock(
@@ -793,10 +791,7 @@ async def test_hopx_concurrent_command_execution():
     # Execute multiple commands concurrently
     import asyncio
 
-    tasks = [
-        provider.execute_command(sandbox_id, f"echo test{i}")
-        for i in range(5)
-    ]
+    tasks = [provider.execute_command(sandbox_id, f"echo test{i}") for i in range(5)]
     results = await asyncio.gather(*tasks)
 
     # Verify all commands executed successfully
@@ -832,9 +827,7 @@ async def test_hopx_environment_variables_in_commands():
 
     # Execute command with environment variables
     env_vars = {"API_KEY": "secret123", "DEBUG": "true"}
-    result = await provider.execute_command(
-        sandbox_id, "echo $API_KEY", env_vars=env_vars
-    )
+    result = await provider.execute_command(sandbox_id, "echo $API_KEY", env_vars=env_vars)
 
     # Verify env vars were passed correctly
     mock_commands.run.assert_called_once()
