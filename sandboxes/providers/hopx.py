@@ -232,6 +232,81 @@ class HopxProvider(SandboxProvider):
             logger.error(f"Failed to execute command in sandbox {sandbox_id}: {e}")
             raise SandboxError(f"Failed to execute command: {e}") from e
 
+    async def run_code(
+        self,
+        sandbox_id: str,
+        code: str,
+        language: str = "python",
+        timeout: int | None = None,
+        env_vars: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Execute code with rich output capture (plots, DataFrames, etc.).
+
+        This method captures rich outputs like matplotlib plots, pandas DataFrames,
+        and other visualizations automatically.
+
+        Args:
+            sandbox_id: Sandbox ID
+            code: Code to execute
+            language: Language (python, javascript, bash, go)
+            timeout: Execution timeout in seconds
+            env_vars: Optional environment variables
+
+        Returns:
+            Dictionary with:
+                - success: bool
+                - stdout: str
+                - stderr: str
+                - exit_code: int
+                - execution_time: float
+                - rich_outputs: list of rich output objects (plots, dataframes, etc.)
+
+        Example:
+            >>> result = await provider.run_code(
+            ...     sandbox_id="sb-123",
+            ...     code="import matplotlib.pyplot as plt\\nplt.plot([1,2,3])",
+            ...     language="python"
+            ... )
+            >>> print(result['rich_outputs'])  # Contains plot data
+        """
+        if sandbox_id not in self._sandboxes:
+            raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
+
+        try:
+            metadata = self._sandboxes[sandbox_id]
+            hopx_sandbox = metadata["hopx_sandbox"]
+            metadata["last_accessed"] = time.time()
+
+            # Execute code with rich output capture using SDK
+            result = await hopx_sandbox.run_code(
+                code=code,
+                language=language,
+                timeout_seconds=timeout or self.timeout,
+                env=env_vars,
+            )
+
+            # Convert SDK ExecutionResult to dict with rich outputs
+            return {
+                "success": result.success,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_code": result.exit_code,
+                "execution_time": result.execution_time or 0.0,
+                "rich_outputs": [
+                    {
+                        "type": output.type,
+                        "data": output.data,
+                        "metadata": output.metadata,
+                    }
+                    for output in (result.rich_outputs or [])
+                ],
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to execute code in sandbox {sandbox_id}: {e}")
+            raise SandboxError(f"Failed to execute code: {e}") from e
+
     async def stream_execution(
         self,
         sandbox_id: str,
@@ -239,24 +314,79 @@ class HopxProvider(SandboxProvider):
         timeout: int | None = None,
         env_vars: dict[str, str] | None = None,
     ) -> AsyncIterator[str]:
-        """Stream execution output (simulated for Hopx)."""
-        # Hopx SDK supports streaming but for consistency with existing behavior
-        # we'll execute and yield chunks
-        result = await self.execute_command(sandbox_id, command, timeout, env_vars)
+        """
+        Stream execution output in real-time using WebSocket.
 
-        # Yield output in chunks to simulate streaming
-        chunk_size = 256
-        output = result.stdout
+        Falls back to simulated streaming if WebSocket is not available.
 
-        for i in range(0, len(output), chunk_size):
-            yield output[i : i + chunk_size]
-            await asyncio.sleep(0.01)  # Small delay to simulate streaming
+        Args:
+            sandbox_id: Sandbox ID
+            command: Command to execute
+            timeout: Execution timeout in seconds
+            env_vars: Optional environment variables
 
-        if result.stderr:
-            yield f"\n[Error]: {result.stderr}"
+        Yields:
+            Output chunks as they are produced
+        """
+        if sandbox_id not in self._sandboxes:
+            raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
 
-    async def upload_file(self, sandbox_id: str, local_path: str, remote_path: str) -> bool:
-        """Upload a file to the sandbox with security validation."""
+        try:
+            metadata = self._sandboxes[sandbox_id]
+            hopx_sandbox = metadata["hopx_sandbox"]
+            metadata["last_accessed"] = time.time()
+
+            # Try to use SDK's streaming if available
+            if hasattr(hopx_sandbox, "run_code_stream"):
+                # Use real WebSocket streaming from SDK
+                async for chunk in hopx_sandbox.run_code_stream(
+                    code=command,
+                    language="bash",
+                    timeout_seconds=timeout or self.timeout,
+                ):
+                    yield chunk
+            else:
+                # Fallback to simulated streaming
+                result = await self.execute_command(sandbox_id, command, timeout, env_vars)
+
+                # Yield output in chunks to simulate streaming
+                chunk_size = 256
+                output = result.stdout
+
+                for i in range(0, len(output), chunk_size):
+                    yield output[i : i + chunk_size]
+                    await asyncio.sleep(0.01)  # Small delay to simulate streaming
+
+                if result.stderr:
+                    yield f"\n[Error]: {result.stderr}"
+
+        except Exception as e:
+            logger.error(f"Failed to stream execution in sandbox {sandbox_id}: {e}")
+            raise SandboxError(f"Failed to stream execution: {e}") from e
+
+    async def upload_file(
+        self, sandbox_id: str, local_path: str, remote_path: str, binary: bool = False
+    ) -> bool:
+        """
+        Upload a file to the sandbox with security validation.
+
+        Supports both text and binary files.
+
+        Args:
+            sandbox_id: Sandbox ID
+            local_path: Path to local file
+            remote_path: Destination path in sandbox
+            binary: If True, upload as binary file (for images, PDFs, etc.)
+
+        Returns:
+            True if successful
+
+        Example:
+            >>> # Upload text file
+            >>> await provider.upload_file("sb-123", "/path/to/script.py", "/workspace/script.py")
+            >>> # Upload binary file (image, PDF, etc.)
+            >>> await provider.upload_file("sb-123", "/path/to/plot.png", "/workspace/plot.png", binary=True)
+        """
         if sandbox_id not in self._sandboxes:
             raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
 
@@ -268,12 +398,20 @@ class HopxProvider(SandboxProvider):
             hopx_sandbox = metadata["hopx_sandbox"]
 
             # Read local file content from validated path
-            content = validated_path.read_text()
+            if binary:  # noqa: SIM108
+                # For binary files (images, PDFs, etc.)
+                content = validated_path.read_bytes()
+            else:
+                # For text files
+                content = validated_path.read_text()
 
             # Write to sandbox filesystem using SDK
             await hopx_sandbox.files.write(path=remote_path, content=content)
 
-            logger.info(f"Uploaded {validated_path} to {remote_path} in sandbox {sandbox_id}")
+            logger.info(
+                f"Uploaded {validated_path} to {remote_path} in sandbox {sandbox_id} "
+                f"(binary={binary})"
+            )
             metadata["last_accessed"] = time.time()
             return True
 
@@ -281,8 +419,29 @@ class HopxProvider(SandboxProvider):
             logger.error(f"Failed to upload file to sandbox {sandbox_id}: {e}")
             raise SandboxError(f"Failed to upload file: {e}") from e
 
-    async def download_file(self, sandbox_id: str, remote_path: str, local_path: str) -> bool:
-        """Download a file from the sandbox with security validation."""
+    async def download_file(
+        self, sandbox_id: str, remote_path: str, local_path: str, binary: bool = False
+    ) -> bool:
+        """
+        Download a file from the sandbox with security validation.
+
+        Supports both text and binary files.
+
+        Args:
+            sandbox_id: Sandbox ID
+            remote_path: Path to file in sandbox
+            local_path: Destination path on local filesystem
+            binary: If True, download as binary file (for images, PDFs, etc.)
+
+        Returns:
+            True if successful
+
+        Example:
+            >>> # Download text file
+            >>> await provider.download_file("sb-123", "/workspace/output.txt", "/local/output.txt")
+            >>> # Download binary file (image, PDF, etc.)
+            >>> await provider.download_file("sb-123", "/workspace/plot.png", "/local/plot.png", binary=True)
+        """
         if sandbox_id not in self._sandboxes:
             raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
 
@@ -297,9 +456,24 @@ class HopxProvider(SandboxProvider):
             content = await hopx_sandbox.files.read(path=remote_path)
 
             # Write to local file at validated path
-            validated_path.write_text(content)
+            if binary:
+                # For binary files - SDK returns bytes
+                if isinstance(content, str):
+                    # If SDK returned string, encode it
+                    validated_path.write_bytes(content.encode("latin1"))
+                else:
+                    validated_path.write_bytes(content)
+            else:
+                # For text files
+                if isinstance(content, bytes):
+                    validated_path.write_text(content.decode("utf-8"))
+                else:
+                    validated_path.write_text(content)
 
-            logger.info(f"Downloaded {remote_path} from sandbox {sandbox_id} to {validated_path}")
+            logger.info(
+                f"Downloaded {remote_path} from sandbox {sandbox_id} to {validated_path} "
+                f"(binary={binary})"
+            )
             metadata["last_accessed"] = time.time()
             return True
 
@@ -390,6 +564,103 @@ class HopxProvider(SandboxProvider):
         for sandbox_id in to_destroy:
             logger.info(f"Cleaning up idle sandbox {sandbox_id}")
             await self.destroy_sandbox(sandbox_id)
+
+    async def get_desktop_vnc_url(self, sandbox_id: str) -> str | None:
+        """
+        Get VNC URL for desktop automation (if available).
+
+        Desktop automation requires sandboxes created with desktop-enabled templates.
+        This feature allows GUI application testing, browser automation, and visual interactions.
+
+        Args:
+            sandbox_id: Sandbox ID
+
+        Returns:
+            VNC URL string if desktop is available, None otherwise
+
+        Example:
+            >>> # Create sandbox with desktop support
+            >>> config = SandboxConfig(provider_config={"template": "desktop"})
+            >>> sandbox = await provider.create_sandbox(config)
+            >>>
+            >>> # Get VNC URL
+            >>> vnc_url = await provider.get_desktop_vnc_url(sandbox.id)
+            >>> if vnc_url:
+            ...     print(f"Connect to desktop at: {vnc_url}")
+
+        Note:
+            Desktop automation is an advanced feature requiring specific templates.
+            Not all templates support desktop/VNC functionality.
+        """
+        if sandbox_id not in self._sandboxes:
+            raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
+
+        try:
+            metadata = self._sandboxes[sandbox_id]
+            hopx_sandbox = metadata["hopx_sandbox"]
+
+            # Check if SDK supports desktop (may not be in all versions)
+            if hasattr(hopx_sandbox, "desktop"):
+                # Try to start VNC and get URL
+                vnc_info = await hopx_sandbox.desktop.start_vnc()
+                return vnc_info.url if hasattr(vnc_info, "url") else None
+            else:
+                logger.warning(
+                    f"Desktop automation not available for sandbox {sandbox_id}. "
+                    "Requires desktop-enabled template and SDK support."
+                )
+                return None
+
+        except Exception as e:
+            logger.error(f"Failed to get VNC URL for sandbox {sandbox_id}: {e}")
+            # Don't raise, just return None - desktop might not be available
+            return None
+
+    async def screenshot(self, sandbox_id: str, output_path: str | None = None) -> bytes | None:
+        """
+        Capture screenshot from sandbox desktop (if available).
+
+        Requires sandbox with desktop support.
+
+        Args:
+            sandbox_id: Sandbox ID
+            output_path: Optional local path to save screenshot PNG
+
+        Returns:
+            PNG image bytes if successful, None if desktop not available
+
+        Example:
+            >>> # Capture and save screenshot
+            >>> img_bytes = await provider.screenshot("sb-123", "/local/screenshot.png")
+            >>> if img_bytes:
+            ...     print(f"Screenshot saved: {len(img_bytes)} bytes")
+        """
+        if sandbox_id not in self._sandboxes:
+            raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
+
+        try:
+            metadata = self._sandboxes[sandbox_id]
+            hopx_sandbox = metadata["hopx_sandbox"]
+
+            # Check if SDK supports desktop
+            if not hasattr(hopx_sandbox, "desktop"):
+                logger.warning("Screenshot not available - desktop support not enabled")
+                return None
+
+            # Capture screenshot
+            img_bytes = await hopx_sandbox.desktop.screenshot()
+
+            # Optionally save to file
+            if output_path and img_bytes:
+                validated_path = validate_download_path(output_path)
+                validated_path.write_bytes(img_bytes)
+                logger.info(f"Screenshot saved to {validated_path}")
+
+            return img_bytes
+
+        except Exception as e:
+            logger.error(f"Failed to capture screenshot for sandbox {sandbox_id}: {e}")
+            return None
 
     def __del__(self):
         """Cleanup on deletion."""

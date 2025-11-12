@@ -2,7 +2,6 @@
 
 import os
 import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,7 +18,7 @@ async def test_hopx_happy_path():
     provider = HopxProvider(api_key="test-key")
 
     # Mock the Hopx SDK
-    with patch("sandboxes.providers.hopx.HopxSandbox") as MockHopxSandbox:
+    with patch("sandboxes.providers.hopx.HopxSandbox") as MockHopxSandbox:  # noqa: N806
         # Create mock sandbox instance
         mock_sandbox = AsyncMock()
         mock_sandbox.sandbox_id = sandbox_id
@@ -104,7 +103,7 @@ async def test_hopx_http_error_raises_sandbox_error():
     """SDK errors should surface as SandboxError."""
     provider = HopxProvider(api_key="test-key")
 
-    with patch("sandboxes.providers.hopx.HopxSandbox") as MockHopxSandbox:
+    with patch("sandboxes.providers.hopx.HopxSandbox") as MockHopxSandbox:  # noqa: N806
         # Mock SDK to raise error
         MockHopxSandbox.list = AsyncMock(side_effect=Exception("API Error"))
 
@@ -119,6 +118,18 @@ async def test_hopx_stream_execution():
     sandbox_id = "stream-test"
     provider = HopxProvider(api_key="test-key")
 
+    # Create mock sandbox without streaming support (fallback to simulated)
+    mock_sandbox = MagicMock()
+    mock_sandbox.sandbox_id = sandbox_id
+    # Explicitly set spec without run_code_stream to force fallback
+    mock_sandbox_spec = MagicMock(spec=["sandbox_id", "files", "commands"])
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox_spec,
+        "labels": {},
+        "last_accessed": 0,
+    }
+
     with patch.object(provider, "execute_command") as mock_exec:
         mock_exec.return_value = ExecutionResult(
             exit_code=0,
@@ -128,9 +139,6 @@ async def test_hopx_stream_execution():
             truncated=False,
             timed_out=False,
         )
-
-        # Add sandbox to tracking
-        provider._sandboxes[sandbox_id] = {"labels": {}}
 
         chunks = []
         async for chunk in provider.stream_execution(sandbox_id, "echo test"):
@@ -218,7 +226,7 @@ async def test_hopx_file_download():
         assert success
 
         # Verify the content was written correctly
-        with open(output_path, "r") as f:
+        with open(output_path) as f:
             content = f.read()
         assert content == "downloaded file content"
 
@@ -330,7 +338,7 @@ async def test_hopx_template_selection():
     """Test that templates can be specified via config."""
     provider = HopxProvider(api_key="test-key")
 
-    with patch("sandboxes.providers.hopx.HopxSandbox") as MockHopxSandbox:
+    with patch("sandboxes.providers.hopx.HopxSandbox") as MockHopxSandbox:  # noqa: N806
         mock_sandbox = AsyncMock()
         mock_sandbox.sandbox_id = "template-test"
         mock_sandbox.get_info = AsyncMock(
@@ -438,6 +446,226 @@ async def test_hopx_get_or_create_sandbox():
 
     # Should return existing sandbox
     assert sandbox.id == "existing-sb"
+
+
+@pytest.mark.asyncio
+async def test_hopx_run_code_with_rich_outputs():
+    """Test run_code method for capturing plots and rich outputs."""
+    sandbox_id = "rich-output-test"
+    provider = HopxProvider(api_key="test-key")
+
+    # Create mock sandbox with run_code support
+    mock_sandbox = AsyncMock()
+    mock_sandbox.sandbox_id = sandbox_id
+
+    # Mock rich output result
+    from unittest.mock import MagicMock
+
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.stdout = "Plot created\n"
+    mock_result.stderr = ""
+    mock_result.exit_code = 0
+    mock_result.execution_time = 1.5
+    mock_result.rich_outputs = [
+        MagicMock(
+            type="image/png",
+            data="iVBORw0KGgoAAAANSUhEUg...",  # Base64 PNG data
+            metadata={"width": 800, "height": 600},
+        )
+    ]
+
+    mock_sandbox.run_code = AsyncMock(return_value=mock_result)
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+        "last_accessed": 0,
+    }
+
+    # Execute code
+    result = await provider.run_code(
+        sandbox_id,
+        code="import matplotlib.pyplot as plt\nplt.plot([1,2,3])",
+        language="python",
+    )
+
+    # Verify result structure
+    assert result["success"] is True
+    assert result["stdout"] == "Plot created\n"
+    assert result["exit_code"] == 0
+    assert result["execution_time"] == 1.5
+    assert len(result["rich_outputs"]) == 1
+    assert result["rich_outputs"][0]["type"] == "image/png"
+    assert "data" in result["rich_outputs"][0]
+
+    # Verify SDK method was called
+    mock_sandbox.run_code.assert_called_once()
+    call_kwargs = mock_sandbox.run_code.call_args.kwargs
+    assert call_kwargs["code"] == "import matplotlib.pyplot as plt\nplt.plot([1,2,3])"
+    assert call_kwargs["language"] == "python"
+
+
+@pytest.mark.asyncio
+async def test_hopx_binary_file_upload():
+    """Test binary file upload (images, PDFs, etc.)."""
+    sandbox_id = "binary-upload-test"
+    provider = HopxProvider(api_key="test-key")
+
+    # Create a temporary binary file
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".png") as f:
+        # Write fake PNG header
+        f.write(b"\x89PNG\r\n\x1a\n")
+        temp_path = f.name
+
+    try:
+        # Create mock sandbox
+        mock_sandbox = AsyncMock()
+        mock_sandbox.sandbox_id = sandbox_id
+        mock_sandbox.files.write = AsyncMock()
+
+        provider._sandboxes[sandbox_id] = {
+            "hopx_sandbox": mock_sandbox,
+            "labels": {},
+            "last_accessed": 0,
+        }
+
+        # Upload binary file
+        success = await provider.upload_file(
+            sandbox_id, temp_path, "/workspace/image.png", binary=True
+        )
+        assert success
+
+        # Verify SDK was called with bytes
+        mock_sandbox.files.write.assert_called_once()
+        call_kwargs = mock_sandbox.files.write.call_args.kwargs
+        assert call_kwargs["path"] == "/workspace/image.png"
+        assert isinstance(call_kwargs["content"], bytes)
+        assert call_kwargs["content"].startswith(b"\x89PNG")
+    finally:
+        os.unlink(temp_path)
+
+
+@pytest.mark.asyncio
+async def test_hopx_binary_file_download():
+    """Test binary file download (images, PDFs, etc.)."""
+    sandbox_id = "binary-download-test"
+    provider = HopxProvider(api_key="test-key")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_path = os.path.join(tmpdir, "downloaded.png")
+
+        # Create mock sandbox
+        mock_sandbox = AsyncMock()
+        mock_sandbox.sandbox_id = sandbox_id
+        # SDK returns bytes for binary files
+        mock_sandbox.files.read = AsyncMock(return_value=b"\x89PNG\r\n\x1a\n")
+
+        provider._sandboxes[sandbox_id] = {
+            "hopx_sandbox": mock_sandbox,
+            "labels": {},
+            "last_accessed": 0,
+        }
+
+        # Download binary file
+        success = await provider.download_file(
+            sandbox_id, "/workspace/plot.png", output_path, binary=True
+        )
+        assert success
+
+        # Verify binary content
+        with open(output_path, "rb") as f:
+            content = f.read()
+        assert content == b"\x89PNG\r\n\x1a\n"
+
+
+@pytest.mark.asyncio
+async def test_hopx_screenshot():
+    """Test desktop screenshot capture."""
+    sandbox_id = "screenshot-test"
+    provider = HopxProvider(api_key="test-key")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_path = os.path.join(tmpdir, "screen.png")
+
+        # Create mock sandbox with desktop support
+        mock_sandbox = AsyncMock()
+        mock_sandbox.sandbox_id = sandbox_id
+        mock_desktop = AsyncMock()
+        mock_desktop.screenshot = AsyncMock(return_value=b"\x89PNG\r\n\x1a\nFAKE_SCREENSHOT")
+        mock_sandbox.desktop = mock_desktop
+
+        provider._sandboxes[sandbox_id] = {
+            "hopx_sandbox": mock_sandbox,
+            "labels": {},
+            "last_accessed": 0,
+        }
+
+        # Capture screenshot
+        img_bytes = await provider.screenshot(sandbox_id, output_path)
+
+        assert img_bytes is not None
+        assert img_bytes.startswith(b"\x89PNG")
+        assert os.path.exists(output_path)
+
+        # Verify file was saved
+        with open(output_path, "rb") as f:
+            saved_content = f.read()
+        assert saved_content == img_bytes
+
+
+@pytest.mark.asyncio
+async def test_hopx_screenshot_no_desktop_support():
+    """Test screenshot when desktop is not available."""
+    sandbox_id = "no-desktop-test"
+    provider = HopxProvider(api_key="test-key")
+
+    # Create mock sandbox WITHOUT desktop support
+    mock_sandbox = MagicMock()
+    mock_sandbox.sandbox_id = sandbox_id
+    # Explicitly remove desktop attribute using spec
+    mock_sandbox_spec = MagicMock(spec=["sandbox_id", "files", "commands"])
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox_spec,
+        "labels": {},
+        "last_accessed": 0,
+    }
+
+    # Try to capture screenshot (should return None gracefully)
+    img_bytes = await provider.screenshot(sandbox_id)
+    assert img_bytes is None
+
+
+@pytest.mark.asyncio
+async def test_hopx_get_desktop_vnc_url():
+    """Test getting VNC URL for desktop automation."""
+    sandbox_id = "vnc-test"
+    provider = HopxProvider(api_key="test-key")
+
+    # Create mock sandbox with desktop support
+    mock_sandbox = AsyncMock()
+    mock_sandbox.sandbox_id = sandbox_id
+    mock_desktop = AsyncMock()
+    mock_vnc_info = MagicMock()
+    mock_vnc_info.url = "wss://hopx-vnc-123.hopx.dev/vnc"
+    mock_desktop.start_vnc = AsyncMock(return_value=mock_vnc_info)
+    mock_sandbox.desktop = mock_desktop
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+        "last_accessed": 0,
+    }
+
+    # Get VNC URL
+    vnc_url = await provider.get_desktop_vnc_url(sandbox_id)
+
+    assert vnc_url is not None
+    assert vnc_url == "wss://hopx-vnc-123.hopx.dev/vnc"
+    mock_desktop.start_vnc.assert_called_once()
 
 
 @pytest.mark.asyncio
