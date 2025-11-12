@@ -69,13 +69,20 @@ class Sandbox:
         Providers are registered in priority order:
         1. Daytona
         2. E2B
-        3. Modal
-        4. Cloudflare (experimental)
+        3. Hopx
+        4. Modal
+        5. Cloudflare (experimental)
 
         The first registered provider becomes the default unless explicitly set.
         Users can override with Sandbox.configure(default_provider="...").
         """
-        from .providers import CloudflareProvider, DaytonaProvider, E2BProvider, ModalProvider
+        from .providers import (
+            CloudflareProvider,
+            DaytonaProvider,
+            E2BProvider,
+            HopxProvider,
+            ModalProvider,
+        )
 
         manager = cls._manager
 
@@ -95,7 +102,15 @@ class Sandbox:
             except Exception:
                 pass
 
-        # Try to register Modal (priority 3)
+        # Try to register Hopx (priority 3)
+        if os.getenv("HOPX_API_KEY"):
+            try:
+                manager.register_provider("hopx", HopxProvider, {})
+                print("✓ Registered Hopx provider")
+            except Exception:
+                pass
+
+        # Try to register Modal (priority 4)
         if os.path.exists(os.path.expanduser("~/.modal.toml")) or os.getenv("MODAL_TOKEN_ID"):
             try:
                 manager.register_provider("modal", ModalProvider, {})
@@ -103,7 +118,7 @@ class Sandbox:
             except Exception:
                 pass
 
-        # Try to register Cloudflare (priority 4 - experimental)
+        # Try to register Cloudflare (priority 5 - experimental)
         base_url = os.getenv("CLOUDFLARE_SANDBOX_BASE_URL")
         api_token = os.getenv("CLOUDFLARE_API_TOKEN")
         if base_url and api_token:
@@ -128,6 +143,7 @@ class Sandbox:
         e2b_api_key: str | None = None,
         modal_token: str | None = None,
         daytona_api_key: str | None = None,
+        hopx_api_key: str | None = None,
         cloudflare_config: dict[str, str] | None = None,
         default_provider: str | None = None,
     ) -> None:
@@ -137,10 +153,17 @@ class Sandbox:
         Example:
             Sandbox.configure(
                 e2b_api_key="...",
-                default_provider="e2b"
+                hopx_api_key="...",
+                default_provider="hopx"
             )
         """
-        from .providers import CloudflareProvider, DaytonaProvider, E2BProvider, ModalProvider
+        from .providers import (
+            CloudflareProvider,
+            DaytonaProvider,
+            E2BProvider,
+            HopxProvider,
+            ModalProvider,
+        )
 
         manager = cls._ensure_manager()
 
@@ -153,6 +176,9 @@ class Sandbox:
 
         if daytona_api_key:
             manager.register_provider("daytona", DaytonaProvider, {"api_key": daytona_api_key})
+
+        if hopx_api_key:
+            manager.register_provider("hopx", HopxProvider, {"api_key": hopx_api_key})
 
         if cloudflare_config:
             manager.register_provider("cloudflare", CloudflareProvider, cloudflare_config)

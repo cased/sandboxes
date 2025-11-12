@@ -34,6 +34,13 @@ except ImportError:
     pass
 
 try:
+    from .hopx import HopxProvider
+
+    _providers["hopx"] = HopxProvider
+except ImportError:
+    pass
+
+try:
     from .vercel import VercelProvider
 
     _providers["vercel"] = VercelProvider

@@ -29,6 +29,7 @@ dependencies = [
     "modal>=1.1.4",
     "e2b>=2.0.0",
     "daytona>=0.103.0",
+    "hopx-ai>=0.1.19",
     "httpx>=0.27.0",
 ]
 
@@ -42,6 +43,9 @@ e2b = [
 modal = [
     "modal==1.1.4",  # Latest stable version
 ]
+hopx = [
+    "hopx-ai>=0.1.19",  # Official Hopx SDK for secure cloud sandboxes
+]
 # vercel = [
 #     "vercel-sdk>=0.1.0",  # When available
 # ]
@@ -52,6 +56,7 @@ all = [
     "daytona==0.103.0",
     "e2b>=2.0.0",
     "modal==1.1.4",
+    "hopx-ai>=0.1.19",
 ]
 dev = [
     "pytest>=7.4.0",
