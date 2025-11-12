@@ -1,6 +1,6 @@
 [project]
 name = "cased-sandboxes"
-version = "0.2.3"
+version = "0.3.0"
 description = "Universal library for AI code execution sandboxes"
 authors = [
     { name = "Sandboxes Contributors", email = "ted@cased.com" }
@@ -10,7 +10,7 @@ readme = "README.md"
 homepage = "https://github.com/cased/sandboxes"
 repository = "https://github.com/cased/sandboxes"
 documentation = "https://github.com/cased/sandboxes"
-keywords = ["sandbox", "ai", "code-execution", "e2b", "modal", "daytona", "vercel", "cloudflare"]
+keywords = ["sandbox", "ai", "code-execution", "e2b", "modal", "daytona", "hopx", "vercel", "cloudflare"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
