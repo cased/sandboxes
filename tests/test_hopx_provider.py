@@ -533,9 +533,7 @@ async def test_hopx_binary_file_upload():
         }
 
         # Upload binary file (binary detected automatically by .png extension)
-        success = await provider.upload_file(
-            sandbox_id, temp_path, "/workspace/image.png"
-        )
+        success = await provider.upload_file(sandbox_id, temp_path, "/workspace/image.png")
         assert success
 
         # Verify SDK was called with bytes
@@ -570,9 +568,7 @@ async def test_hopx_binary_file_download():
         }
 
         # Download binary file (binary detected automatically by SDK)
-        success = await provider.download_file(
-            sandbox_id, "/workspace/plot.png", output_path
-        )
+        success = await provider.download_file(sandbox_id, "/workspace/plot.png", output_path)
         assert success
 
         # Verify binary content
@@ -719,7 +715,9 @@ async def test_hopx_get_preview_url():
     # Mock sandbox with get_preview_url method (SDK v0.3.0+)
     mock_sandbox = AsyncMock()
     mock_sandbox.sandbox_id = sandbox_id
-    mock_sandbox.get_preview_url = AsyncMock(return_value="https://8080-sandbox123.eu-1001.vms.hopx.dev/")
+    mock_sandbox.get_preview_url = AsyncMock(
+        return_value="https://8080-sandbox123.eu-1001.vms.hopx.dev/"
+    )
 
     provider._sandboxes[sandbox_id] = {
         "hopx_sandbox": mock_sandbox,
@@ -749,7 +747,9 @@ async def test_hopx_get_agent_url():
     # Mock sandbox
     mock_sandbox = AsyncMock()
     mock_sandbox.sandbox_id = sandbox_id
-    mock_sandbox.get_preview_url = AsyncMock(return_value="https://7777-sandbox123.eu-1001.vms.hopx.dev/")
+    mock_sandbox.get_preview_url = AsyncMock(
+        return_value="https://7777-sandbox123.eu-1001.vms.hopx.dev/"
+    )
 
     provider._sandboxes[sandbox_id] = {
         "hopx_sandbox": mock_sandbox,

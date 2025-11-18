@@ -415,7 +415,22 @@ class HopxProvider(SandboxProvider):
             hopx_sandbox = metadata["hopx_sandbox"]
 
             # Auto-detect binary files by extension
-            binary_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip', '.tar', '.gz', '.bz2', '.exe', '.bin', '.so', '.dll', '.dylib'}
+            binary_extensions = {
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".gif",
+                ".pdf",
+                ".zip",
+                ".tar",
+                ".gz",
+                ".bz2",
+                ".exe",
+                ".bin",
+                ".so",
+                ".dll",
+                ".dylib",
+            }
             is_binary = validated_path.suffix.lower() in binary_extensions
 
             # Read local file content from validated path
