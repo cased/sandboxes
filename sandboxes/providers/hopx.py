@@ -62,16 +62,33 @@ class HopxProvider(SandboxProvider):
 
     def _to_sandbox(self, hopx_sandbox, metadata: dict[str, Any]) -> Sandbox:
         """Convert Hopx SDK sandbox to standard Sandbox."""
+        # Map Hopx status to SandboxState
+        # Hopx API statuses: running, stopped, paused, creating (verified from SDK models.py:221)
+        status = metadata.get("status", "running").lower()
+        state_mapping = {
+            "running": SandboxState.RUNNING,
+            "stopped": SandboxState.STOPPED,
+            "paused": SandboxState.STOPPED,  # Hopx paused maps to STOPPED
+            "creating": SandboxState.CREATING,
+        }
+        state = state_mapping.get(status, SandboxState.RUNNING)
+
+        public_host = metadata.get("public_host", "")
+
         return Sandbox(
             id=hopx_sandbox.sandbox_id,
             provider=self.name,
-            state=SandboxState.RUNNING,  # Hopx sandboxes are running when created
+            state=state,
             labels=metadata.get("labels", {}),
             created_at=metadata.get("created_at", datetime.now()),
+            connection_info={
+                "public_host": public_host,
+                "agent_url": f"{public_host}/" if public_host else "",
+            },
             metadata={
                 "template": metadata.get("template", self.default_template),
                 "last_accessed": metadata.get("last_accessed", time.time()),
-                "public_host": metadata.get("public_host", ""),
+                "public_host": public_host,
             },
         )
 
@@ -108,6 +125,7 @@ class HopxProvider(SandboxProvider):
                 "last_accessed": time.time(),
                 "template": template,
                 "public_host": info.public_host,
+                "status": info.status,
                 "config": config,
             }
 
@@ -158,6 +176,7 @@ class HopxProvider(SandboxProvider):
                         "last_accessed": time.time(),
                         "template": info.template_name or self.default_template,
                         "public_host": info.public_host,
+                        "status": info.status,
                     }
 
                 # Filter by labels if provided
@@ -364,28 +383,26 @@ class HopxProvider(SandboxProvider):
             logger.error(f"Failed to stream execution in sandbox {sandbox_id}: {e}")
             raise SandboxError(f"Failed to stream execution: {e}") from e
 
-    async def upload_file(
-        self, sandbox_id: str, local_path: str, remote_path: str, binary: bool = False
-    ) -> bool:
+    async def upload_file(self, sandbox_id: str, local_path: str, sandbox_path: str) -> bool:
         """
-        Upload a file to the sandbox with security validation.
+        Upload a file to the sandbox (matches SandboxProvider interface).
 
-        Supports both text and binary files.
+        Automatically handles both text and binary files based on file extension.
 
         Args:
             sandbox_id: Sandbox ID
             local_path: Path to local file
-            remote_path: Destination path in sandbox
-            binary: If True, upload as binary file (for images, PDFs, etc.)
+            sandbox_path: Destination path in sandbox
 
         Returns:
             True if successful
 
+        Raises:
+            SandboxNotFoundError: If sandbox not found
+            SandboxError: If upload fails
+
         Example:
-            >>> # Upload text file
             >>> await provider.upload_file("sb-123", "/path/to/script.py", "/workspace/script.py")
-            >>> # Upload binary file (image, PDF, etc.)
-            >>> await provider.upload_file("sb-123", "/path/to/plot.png", "/workspace/plot.png", binary=True)
         """
         if sandbox_id not in self._sandboxes:
             raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
@@ -397,21 +414,39 @@ class HopxProvider(SandboxProvider):
             metadata = self._sandboxes[sandbox_id]
             hopx_sandbox = metadata["hopx_sandbox"]
 
+            # Auto-detect binary files by extension
+            binary_extensions = {
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".gif",
+                ".pdf",
+                ".zip",
+                ".tar",
+                ".gz",
+                ".bz2",
+                ".exe",
+                ".bin",
+                ".so",
+                ".dll",
+                ".dylib",
+            }
+            is_binary = validated_path.suffix.lower() in binary_extensions
+
             # Read local file content from validated path
-            if binary:  # noqa: SIM108
-                # For binary files (images, PDFs, etc.)
+            if is_binary:
                 content = validated_path.read_bytes()
             else:
-                # For text files
-                content = validated_path.read_text()
+                try:
+                    content = validated_path.read_text()
+                except UnicodeDecodeError:
+                    # Fallback to binary if text decoding fails
+                    content = validated_path.read_bytes()
 
             # Write to sandbox filesystem using SDK
-            await hopx_sandbox.files.write(path=remote_path, content=content)
+            await hopx_sandbox.files.write(path=sandbox_path, content=content)
 
-            logger.info(
-                f"Uploaded {validated_path} to {remote_path} in sandbox {sandbox_id} "
-                f"(binary={binary})"
-            )
+            logger.info(f"Uploaded {validated_path} to {sandbox_path} in sandbox {sandbox_id}")
             metadata["last_accessed"] = time.time()
             return True
 
@@ -419,28 +454,26 @@ class HopxProvider(SandboxProvider):
             logger.error(f"Failed to upload file to sandbox {sandbox_id}: {e}")
             raise SandboxError(f"Failed to upload file: {e}") from e
 
-    async def download_file(
-        self, sandbox_id: str, remote_path: str, local_path: str, binary: bool = False
-    ) -> bool:
+    async def download_file(self, sandbox_id: str, sandbox_path: str, local_path: str) -> bool:
         """
-        Download a file from the sandbox with security validation.
+        Download a file from the sandbox (matches SandboxProvider interface).
 
-        Supports both text and binary files.
+        Automatically handles both text and binary files based on content type.
 
         Args:
             sandbox_id: Sandbox ID
-            remote_path: Path to file in sandbox
+            sandbox_path: Path to file in sandbox
             local_path: Destination path on local filesystem
-            binary: If True, download as binary file (for images, PDFs, etc.)
 
         Returns:
             True if successful
 
+        Raises:
+            SandboxNotFoundError: If sandbox not found
+            SandboxError: If download fails
+
         Example:
-            >>> # Download text file
             >>> await provider.download_file("sb-123", "/workspace/output.txt", "/local/output.txt")
-            >>> # Download binary file (image, PDF, etc.)
-            >>> await provider.download_file("sb-123", "/workspace/plot.png", "/local/plot.png", binary=True)
         """
         if sandbox_id not in self._sandboxes:
             raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
@@ -453,27 +486,16 @@ class HopxProvider(SandboxProvider):
             hopx_sandbox = metadata["hopx_sandbox"]
 
             # Read from sandbox filesystem using SDK
-            content = await hopx_sandbox.files.read(path=remote_path)
+            content = await hopx_sandbox.files.read(path=sandbox_path)
 
-            # Write to local file at validated path
-            if binary:
-                # For binary files - SDK returns bytes
-                if isinstance(content, str):
-                    # If SDK returned string, encode it
-                    validated_path.write_bytes(content.encode("latin1"))
-                else:
-                    validated_path.write_bytes(content)
+            # Write to local file at validated path, handling both bytes and str
+            if isinstance(content, bytes):
+                validated_path.write_bytes(content)
             else:
-                # For text files
-                if isinstance(content, bytes):
-                    validated_path.write_text(content.decode("utf-8"))
-                else:
-                    validated_path.write_text(content)
+                # Content is str, write as text
+                validated_path.write_text(content)
 
-            logger.info(
-                f"Downloaded {remote_path} from sandbox {sandbox_id} to {validated_path} "
-                f"(binary={binary})"
-            )
+            logger.info(f"Downloaded {sandbox_path} from sandbox {sandbox_id} to {validated_path}")
             metadata["last_accessed"] = time.time()
             return True
 
@@ -600,17 +622,9 @@ class HopxProvider(SandboxProvider):
             metadata = self._sandboxes[sandbox_id]
             hopx_sandbox = metadata["hopx_sandbox"]
 
-            # Check if SDK supports desktop (may not be in all versions)
-            if hasattr(hopx_sandbox, "desktop"):
-                # Try to start VNC and get URL
-                vnc_info = await hopx_sandbox.desktop.start_vnc()
-                return vnc_info.url if hasattr(vnc_info, "url") else None
-            else:
-                logger.warning(
-                    f"Desktop automation not available for sandbox {sandbox_id}. "
-                    "Requires desktop-enabled template and SDK support."
-                )
-                return None
+            # Call SDK desktop method - it will raise DesktopNotAvailableError if not supported
+            vnc_info = await hopx_sandbox.desktop.start_vnc()
+            return vnc_info.url if hasattr(vnc_info, "url") else None
 
         except Exception as e:
             logger.error(f"Failed to get VNC URL for sandbox {sandbox_id}: {e}")
@@ -643,12 +657,7 @@ class HopxProvider(SandboxProvider):
             metadata = self._sandboxes[sandbox_id]
             hopx_sandbox = metadata["hopx_sandbox"]
 
-            # Check if SDK supports desktop
-            if not hasattr(hopx_sandbox, "desktop"):
-                logger.warning("Screenshot not available - desktop support not enabled")
-                return None
-
-            # Capture screenshot
+            # Capture screenshot - SDK will raise DesktopNotAvailableError if not supported
             img_bytes = await hopx_sandbox.desktop.screenshot()
 
             # Optionally save to file
@@ -662,6 +671,69 @@ class HopxProvider(SandboxProvider):
         except Exception as e:
             logger.error(f"Failed to capture screenshot for sandbox {sandbox_id}: {e}")
             return None
+
+    async def get_preview_url(self, sandbox_id: str, port: int = 7777) -> str:
+        """
+        Get preview URL for accessing services running in the sandbox.
+
+        Hopx exposes all sandbox ports via public URLs. This returns the URL
+        for accessing a service on the specified port.
+
+        Args:
+            sandbox_id: Sandbox ID
+            port: Port number (default: 7777 for sandbox agent)
+
+        Returns:
+            Public URL string for the service
+
+        Raises:
+            SandboxNotFoundError: If sandbox doesn't exist
+            SandboxError: If URL cannot be generated
+
+        Example:
+            >>> url = await provider.get_preview_url("sb-123", 8080)
+            >>> print(url)  # https://8080-sandbox123.eu-1001.vms.hopx.dev/
+        """
+        if sandbox_id not in self._sandboxes:
+            raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
+
+        try:
+            metadata = self._sandboxes[sandbox_id]
+            hopx_sandbox = metadata["hopx_sandbox"]
+
+            # Use SDK's get_preview_url method (requires SDK >= 0.3.0)
+            url = await hopx_sandbox.get_preview_url(port)
+
+            logger.info(f"Preview URL for sandbox {sandbox_id} port {port}: {url}")
+            metadata["last_accessed"] = time.time()
+            return url
+
+        except SandboxNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get preview URL for sandbox {sandbox_id}: {e}")
+            raise SandboxError(f"Failed to get preview URL: {e}") from e
+
+    async def get_agent_url(self, sandbox_id: str) -> str:
+        """
+        Get agent URL for the sandbox.
+
+        Returns the public URL for the sandbox agent (port 7777).
+
+        Args:
+            sandbox_id: Sandbox ID
+
+        Returns:
+            Agent URL string
+
+        Raises:
+            SandboxNotFoundError: If sandbox doesn't exist
+            SandboxError: If URL cannot be generated
+
+        Example:
+            >>> url = await provider.get_agent_url("sb-123")
+        """
+        return await self.get_preview_url(sandbox_id, port=7777)
 
     def __del__(self):
         """Cleanup on deletion."""

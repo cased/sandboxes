@@ -532,10 +532,8 @@ async def test_hopx_binary_file_upload():
             "last_accessed": 0,
         }
 
-        # Upload binary file
-        success = await provider.upload_file(
-            sandbox_id, temp_path, "/workspace/image.png", binary=True
-        )
+        # Upload binary file (binary detected automatically by .png extension)
+        success = await provider.upload_file(sandbox_id, temp_path, "/workspace/image.png")
         assert success
 
         # Verify SDK was called with bytes
@@ -569,10 +567,8 @@ async def test_hopx_binary_file_download():
             "last_accessed": 0,
         }
 
-        # Download binary file
-        success = await provider.download_file(
-            sandbox_id, "/workspace/plot.png", output_path, binary=True
-        )
+        # Download binary file (binary detected automatically by SDK)
+        success = await provider.download_file(sandbox_id, "/workspace/plot.png", output_path)
         assert success
 
         # Verify binary content
@@ -708,6 +704,72 @@ async def test_hopx_live_integration():
     finally:
         # Clean up
         await provider.destroy_sandbox(sandbox.id)
+
+
+@pytest.mark.asyncio
+async def test_hopx_get_preview_url():
+    """Test get_preview_url method for accessing sandbox services."""
+    provider = HopxProvider(api_key="test-key")
+    sandbox_id = "preview-url-test"
+
+    # Mock sandbox with get_preview_url method (SDK v0.3.0+)
+    mock_sandbox = AsyncMock()
+    mock_sandbox.sandbox_id = sandbox_id
+    mock_sandbox.get_preview_url = AsyncMock(
+        return_value="https://8080-sandbox123.eu-1001.vms.hopx.dev/"
+    )
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+        "last_accessed": 0,
+    }
+
+    # Test custom port
+    url = await provider.get_preview_url(sandbox_id, port=8080)
+    assert url == "https://8080-sandbox123.eu-1001.vms.hopx.dev/"
+    mock_sandbox.get_preview_url.assert_called_once_with(8080)
+
+    # Test default port (7777)
+    mock_sandbox.get_preview_url.reset_mock()
+    mock_sandbox.get_preview_url.return_value = "https://7777-sandbox123.eu-1001.vms.hopx.dev/"
+    url = await provider.get_preview_url(sandbox_id)
+    assert url == "https://7777-sandbox123.eu-1001.vms.hopx.dev/"
+    mock_sandbox.get_preview_url.assert_called_once_with(7777)
+
+
+@pytest.mark.asyncio
+async def test_hopx_get_agent_url():
+    """Test get_agent_url convenience method."""
+    provider = HopxProvider(api_key="test-key")
+    sandbox_id = "agent-url-test"
+
+    # Mock sandbox
+    mock_sandbox = AsyncMock()
+    mock_sandbox.sandbox_id = sandbox_id
+    mock_sandbox.get_preview_url = AsyncMock(
+        return_value="https://7777-sandbox123.eu-1001.vms.hopx.dev/"
+    )
+
+    provider._sandboxes[sandbox_id] = {
+        "hopx_sandbox": mock_sandbox,
+        "labels": {},
+        "last_accessed": 0,
+    }
+
+    # Test agent URL (should call get_preview_url with port 7777)
+    url = await provider.get_agent_url(sandbox_id)
+    assert url == "https://7777-sandbox123.eu-1001.vms.hopx.dev/"
+    mock_sandbox.get_preview_url.assert_called_once_with(7777)
+
+
+@pytest.mark.asyncio
+async def test_hopx_get_preview_url_not_found():
+    """Test get_preview_url raises SandboxNotFoundError for unknown sandbox."""
+    provider = HopxProvider(api_key="test-key")
+
+    with pytest.raises(SandboxNotFoundError, match="Sandbox .* not found"):
+        await provider.get_preview_url("unknown-sandbox", port=8080)
 
 
 @pytest.mark.asyncio

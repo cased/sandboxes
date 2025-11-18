@@ -29,7 +29,7 @@ dependencies = [
     "modal>=1.1.4",
     "e2b>=2.0.0",
     "daytona>=0.103.0",
-    "hopx-ai>=0.1.19",
+    "hopx-ai>=0.3.0",
     "httpx>=0.27.0",
 ]
 
@@ -44,7 +44,7 @@ modal = [
     "modal==1.1.4",  # Latest stable version
 ]
 hopx = [
-    "hopx-ai>=0.1.19",  # Official Hopx SDK for secure cloud sandboxes
+    "hopx-ai>=0.3.0",  # Official Hopx SDK for secure cloud sandboxes
 ]
 # vercel = [
 #     "vercel-sdk>=0.1.0",  # When available
@@ -56,7 +56,7 @@ all = [
     "daytona==0.103.0",
     "e2b>=2.0.0",
     "modal==1.1.4",
-    "hopx-ai>=0.1.19",
+    "hopx-ai>=0.3.0",
 ]
 dev = [
     "pytest>=7.4.0",
@@ -154,6 +154,7 @@ markers = [
     "e2b: marks tests that require E2B API",
     "modal: marks tests that require Modal API",
     "daytona: marks tests that require Daytona API",
+    "hopx: marks tests that require Hopx API",
     "cloudflare: marks tests that require Cloudflare API",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
