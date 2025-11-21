@@ -6,6 +6,7 @@ from typing import Any
 
 from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
+from ..security import validate_download_path, validate_upload_path
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +115,10 @@ class DaytonaProvider(SandboxProvider):
                 logger.info(f"Creating Daytona sandbox with language: {language}")
                 params = CreateSandboxBaseParams(language=language, labels=config.labels or {})
 
-            # Create sandbox
-            daytona_sandbox = self.client.create(params)
+            # Create sandbox with timeout
+            # Use config timeout or default to 120 seconds (Daytona default is 60)
+            timeout = config.timeout_seconds or 120
+            daytona_sandbox = self.client.create(params, timeout=timeout)
             logger.info(f"Created Daytona sandbox {daytona_sandbox.id}")
 
             sandbox = self._to_sandbox(daytona_sandbox)
@@ -229,3 +232,61 @@ class DaytonaProvider(SandboxProvider):
         except Exception as e:
             logger.error(f"Failed to find sandbox with labels {labels}: {e}")
             return None
+
+    async def upload_file(
+        self, sandbox_id: str, local_path: str, sandbox_path: str
+    ) -> bool:
+        """Upload a file to the sandbox."""
+        try:
+            # Validate local path to prevent path traversal attacks
+            validated_path = validate_upload_path(local_path)
+
+            # Get the sandbox
+            sandbox = self.client.get(sandbox_id)
+
+            # Read local file content from validated path
+            with open(validated_path, "rb") as f:
+                content = f.read()
+
+            # Upload to sandbox using fs.upload_file
+            # Daytona's upload_file accepts src as string path or bytes
+            sandbox.fs.upload_file(src=content, dst=sandbox_path)
+
+            logger.info(f"Uploaded {validated_path} to {sandbox_path} in sandbox {sandbox_id}")
+            return True
+
+        except Exception as e:
+            if "not found" in str(e).lower():
+                raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found") from e
+            logger.error(f"Failed to upload file to sandbox {sandbox_id}: {e}")
+            raise SandboxError(f"Failed to upload file: {e}") from e
+
+    async def download_file(
+        self, sandbox_id: str, sandbox_path: str, local_path: str
+    ) -> bool:
+        """Download a file from the sandbox."""
+        try:
+            # Validate local path to prevent path traversal attacks
+            validated_path = validate_download_path(local_path)
+
+            # Get the sandbox
+            sandbox = self.client.get(sandbox_id)
+
+            # Download from sandbox using fs.download_file
+            content = sandbox.fs.download_file(sandbox_path)
+
+            if content is None:
+                raise SandboxError(f"File {sandbox_path} not found in sandbox")
+
+            # Write to local file at validated path
+            with open(validated_path, "wb") as f:
+                f.write(content)
+
+            logger.info(f"Downloaded {sandbox_path} from sandbox {sandbox_id} to {validated_path}")
+            return True
+
+        except Exception as e:
+            if "not found" in str(e).lower():
+                raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found") from e
+            logger.error(f"Failed to download file from sandbox {sandbox_id}: {e}")
+            raise SandboxError(f"Failed to download file: {e}") from e
