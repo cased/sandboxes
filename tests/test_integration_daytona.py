@@ -2,6 +2,8 @@
 
 import asyncio
 import contextlib
+import os
+import tempfile
 import time
 
 import pytest
@@ -361,3 +363,57 @@ print(f'Sum of {x} and {y} is {x + y}')
         assert metrics["create_time"] < 5000  # 5 seconds max
         assert metrics["execute_time"] < 2000  # 2 seconds max
         assert metrics["destroy_time"] < 3000  # 3 seconds max
+
+    @pytest.mark.asyncio
+    async def test_file_upload_download(self, daytona_provider):
+        """Test file upload and download operations in Daytona sandbox."""
+        config = SandboxConfig(image="daytonaio/ai-test:0.2.3", timeout_seconds=180)
+        sandbox = await daytona_provider.create_sandbox(config)
+
+        try:
+            # Create a temporary file to upload
+            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
+                test_content = "Hello from Daytona file upload test!\nLine 2\nLine 3"
+                f.write(test_content)
+                local_upload_path = f.name
+
+            try:
+                # Upload the file to sandbox
+                sandbox_path = "/tmp/uploaded_test.txt"
+                success = await daytona_provider.upload_file(
+                    sandbox.id, local_upload_path, sandbox_path
+                )
+                assert success is True
+
+                # Verify file exists in sandbox
+                result = await daytona_provider.execute_command(sandbox.id, f"cat {sandbox_path}")
+                assert result.success
+                assert test_content in result.stdout
+
+                # Download the file back
+                with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
+                    local_download_path = f.name
+
+                try:
+                    success = await daytona_provider.download_file(
+                        sandbox.id, sandbox_path, local_download_path
+                    )
+                    assert success is True
+
+                    # Verify downloaded content matches
+                    with open(local_download_path) as f:
+                        downloaded_content = f.read()
+                    assert downloaded_content == test_content
+
+                finally:
+                    # Clean up downloaded file
+                    if os.path.exists(local_download_path):
+                        os.unlink(local_download_path)
+
+            finally:
+                # Clean up uploaded file
+                if os.path.exists(local_upload_path):
+                    os.unlink(local_upload_path)
+
+        finally:
+            await daytona_provider.destroy_sandbox(sandbox.id)
