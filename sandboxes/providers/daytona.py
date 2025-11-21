@@ -233,9 +233,7 @@ class DaytonaProvider(SandboxProvider):
             logger.error(f"Failed to find sandbox with labels {labels}: {e}")
             return None
 
-    async def upload_file(
-        self, sandbox_id: str, local_path: str, sandbox_path: str
-    ) -> bool:
+    async def upload_file(self, sandbox_id: str, local_path: str, sandbox_path: str) -> bool:
         """Upload a file to the sandbox."""
         try:
             # Validate local path to prevent path traversal attacks
@@ -261,9 +259,7 @@ class DaytonaProvider(SandboxProvider):
             logger.error(f"Failed to upload file to sandbox {sandbox_id}: {e}")
             raise SandboxError(f"Failed to upload file: {e}") from e
 
-    async def download_file(
-        self, sandbox_id: str, sandbox_path: str, local_path: str
-    ) -> bool:
+    async def download_file(self, sandbox_id: str, sandbox_path: str, local_path: str) -> bool:
         """Download a file from the sandbox."""
         try:
             # Validate local path to prevent path traversal attacks
