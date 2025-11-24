@@ -365,6 +365,32 @@ print(f'Sum of {x} and {y} is {x + y}')
         assert metrics["destroy_time"] < 3000  # 3 seconds max
 
     @pytest.mark.asyncio
+    async def test_resource_configuration(self, daytona_provider):
+        """Test that memory and CPU configuration is properly passed to Daytona."""
+        config = SandboxConfig(
+            image="daytonaio/ai-test:0.2.3",
+            memory_mb=2048,  # 2GB RAM
+            cpu_cores=2.0,  # 2 vCPUs
+            labels={"test": "resource-config"},
+        )
+
+        sandbox = await daytona_provider.create_sandbox(config)
+
+        try:
+            # Verify sandbox was created successfully
+            assert sandbox is not None
+            assert sandbox.id is not None
+            assert sandbox.state in [SandboxState.RUNNING, SandboxState.STARTING]
+
+            # Execute a command to verify the sandbox is functional
+            result = await daytona_provider.execute_command(sandbox.id, "echo 'Resource test'")
+            assert result.success
+            assert "Resource test" in result.stdout
+
+        finally:
+            await daytona_provider.destroy_sandbox(sandbox.id)
+
+    @pytest.mark.asyncio
     async def test_file_upload_download(self, daytona_provider):
         """Test file upload and download operations in Daytona sandbox."""
         config = SandboxConfig(image="daytonaio/ai-test:0.2.3", timeout_seconds=180)

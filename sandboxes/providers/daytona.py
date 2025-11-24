@@ -16,6 +16,7 @@ try:
         CreateSandboxFromImageParams,
         CreateSandboxFromSnapshotParams,
         Daytona,
+        Resources,
     )
 
     DAYTONA_AVAILABLE = True
@@ -25,6 +26,7 @@ except ImportError:
     CreateSandboxBaseParams = None
     CreateSandboxFromImageParams = None
     CreateSandboxFromSnapshotParams = None
+    Resources = None
     logger.warning("Daytona SDK not available - install with: pip install daytona")
 
 
@@ -106,7 +108,19 @@ class DaytonaProvider(SandboxProvider):
                 # Use Docker image (RECOMMENDED - most portable)
                 image = config.image or config.provider_config.get("image") or self.default_image
                 logger.info(f"Creating Daytona sandbox with Docker image: {image}")
-                params = CreateSandboxFromImageParams(image=image)
+
+                # Configure resources if specified
+                resources = None
+                if config.memory_mb or config.cpu_cores:
+                    resources = Resources(
+                        cpu=int(config.cpu_cores) if config.cpu_cores else None,
+                        memory=int(config.memory_mb / 1024) if config.memory_mb else None,
+                    )
+                    logger.info(
+                        f"Configuring resources: CPU={config.cpu_cores}, Memory={config.memory_mb}MB"
+                    )
+
+                params = CreateSandboxFromImageParams(image=image, resources=resources)
             else:
                 # Use language-based creation (fallback)
                 language = (
