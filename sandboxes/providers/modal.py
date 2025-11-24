@@ -102,15 +102,16 @@ class ModalProvider(SandboxProvider):
                 or (config.provider_config.get("image") if config.provider_config else None)
                 or self.default_image
             )
+            # Prioritize standard config fields, then provider_config, then defaults
             cpu = (
-                config.provider_config.get("cpu", self.default_cpu)
-                if config.provider_config
-                else self.default_cpu
+                config.cpu_cores
+                or (config.provider_config.get("cpu") if config.provider_config else None)
+                or self.default_cpu
             )
             memory = (
-                config.provider_config.get("memory", self.default_memory)
-                if config.provider_config
-                else self.default_memory
+                config.memory_mb
+                or (config.provider_config.get("memory") if config.provider_config else None)
+                or self.default_memory
             )
             timeout = config.timeout_seconds or self.timeout
 
