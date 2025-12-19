@@ -70,8 +70,9 @@ class Sandbox:
         1. Daytona
         2. E2B
         3. Hopx
-        4. Modal
-        5. Cloudflare (experimental)
+        4. Deno
+        5. Modal
+        6. Cloudflare (experimental)
 
         The first registered provider becomes the default unless explicitly set.
         Users can override with Sandbox.configure(default_provider="...").
@@ -79,6 +80,7 @@ class Sandbox:
         from .providers import (
             CloudflareProvider,
             DaytonaProvider,
+            DenoProvider,
             E2BProvider,
             HopxProvider,
             ModalProvider,
@@ -110,7 +112,15 @@ class Sandbox:
             except Exception:
                 pass
 
-        # Try to register Modal (priority 4)
+        # Try to register Deno (priority 4)
+        if os.getenv("DENO_DEPLOY_TOKEN"):
+            try:
+                manager.register_provider("deno", DenoProvider, {})
+                print("✓ Registered Deno provider")
+            except Exception:
+                pass
+
+        # Try to register Modal (priority 5)
         if os.path.exists(os.path.expanduser("~/.modal.toml")) or os.getenv("MODAL_TOKEN_ID"):
             try:
                 manager.register_provider("modal", ModalProvider, {})
@@ -144,6 +154,7 @@ class Sandbox:
         modal_token: str | None = None,
         daytona_api_key: str | None = None,
         hopx_api_key: str | None = None,
+        deno_api_key: str | None = None,
         cloudflare_config: dict[str, str] | None = None,
         default_provider: str | None = None,
     ) -> None:
@@ -154,12 +165,14 @@ class Sandbox:
             Sandbox.configure(
                 e2b_api_key="...",
                 hopx_api_key="...",
+                deno_api_key="...",
                 default_provider="hopx"
             )
         """
         from .providers import (
             CloudflareProvider,
             DaytonaProvider,
+            DenoProvider,
             E2BProvider,
             HopxProvider,
             ModalProvider,
@@ -179,6 +192,9 @@ class Sandbox:
 
         if hopx_api_key:
             manager.register_provider("hopx", HopxProvider, {"api_key": hopx_api_key})
+
+        if deno_api_key:
+            manager.register_provider("deno", DenoProvider, {"api_key": deno_api_key})
 
         if cloudflare_config:
             manager.register_provider("cloudflare", CloudflareProvider, cloudflare_config)

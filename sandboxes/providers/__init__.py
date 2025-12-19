@@ -41,6 +41,13 @@ except ImportError:
     pass
 
 try:
+    from .deno import DenoProvider
+
+    _providers["deno"] = DenoProvider
+except ImportError:
+    pass
+
+try:
     from .vercel import VercelProvider
 
     _providers["vercel"] = VercelProvider
