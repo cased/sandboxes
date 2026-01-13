@@ -376,9 +376,7 @@ class TestCloudflarePathValidation:
         malicious_path = str(tmp_path / ".." / ".." / "etc" / "malicious.txt")
 
         with pytest.raises(SandboxError, match="Path traversal detected"):
-            await mock_provider.download_file(
-                "test-session", "/workspace/test.txt", malicious_path
-            )
+            await mock_provider.download_file("test-session", "/workspace/test.txt", malicious_path)
 
     @pytest.mark.asyncio
     async def test_download_rejects_nonexistent_parent(self, mock_provider, tmp_path):
