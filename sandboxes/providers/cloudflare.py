@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import os
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import suppress
@@ -15,6 +14,7 @@ import httpx
 
 from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
+from ..security import validate_download_path, validate_upload_path
 
 _DEFAULT_TIMEOUT = 30.0
 
@@ -243,11 +243,10 @@ class CloudflareProvider(SandboxProvider):
         """Upload a file to the sandbox."""
         await self._ensure_session_exists(sandbox_id)
 
-        # Read the local file
-        if not os.path.exists(local_path):
-            raise SandboxError(f"Local file not found: {local_path}")
+        # Validate local path to prevent path traversal attacks
+        validated_path = validate_upload_path(local_path)
 
-        with open(local_path, "rb") as f:
+        with open(validated_path, "rb") as f:
             content = f.read()
 
         # Try the file upload endpoint if available
@@ -281,6 +280,9 @@ class CloudflareProvider(SandboxProvider):
         """Download a file from the sandbox."""
         await self._ensure_session_exists(sandbox_id)
 
+        # Validate local path to prevent path traversal attacks
+        validated_path = validate_download_path(local_path)
+
         # Try the file read endpoint if available
         try:
             payload = {"id": sandbox_id, "path": remote_path}
@@ -288,8 +290,8 @@ class CloudflareProvider(SandboxProvider):
             content = data.get("content", "")
 
             # Write to local file
-            with open(local_path, "w") as f:
-                f.write(content)
+            with open(validated_path, "wb") as f:
+                f.write(content.encode() if isinstance(content, str) else content)
             return True
         except (SandboxError, SandboxNotFoundError):
             # Fallback: use cat and base64 encoding to read file
@@ -300,7 +302,7 @@ class CloudflareProvider(SandboxProvider):
             # Decode and write
             try:
                 content = base64.b64decode(result.stdout.strip())
-                with open(local_path, "wb") as f:
+                with open(validated_path, "wb") as f:
                     f.write(content)
                 return True
             except Exception as e:
