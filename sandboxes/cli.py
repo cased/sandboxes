@@ -562,16 +562,18 @@ def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
 
 
 def _run_claude_e2b():
-    """Run Claude Code using E2B provider."""
-    import asyncio
-    import sys
-    import tty
-    import termios
-    import signal
+    """Run Claude Code using E2B - SDK to create, CLI to connect."""
+    import shutil
+    import subprocess
+
+    # Check for E2B CLI
+    if not shutil.which("e2b"):
+        click.echo("❌ E2B CLI not found. Install with:", err=True)
+        click.echo("   npm install -g @e2b/cli", err=True)
+        sys.exit(1)
 
     try:
-        from e2b import AsyncSandbox
-        from e2b.sandbox.commands.command_handle import PtySize
+        from e2b import Sandbox
     except ImportError:
         click.echo("❌ E2B SDK not installed. Install with:", err=True)
         click.echo("   pip install e2b", err=True)
@@ -581,78 +583,39 @@ def _run_claude_e2b():
         click.echo("❌ E2B_API_KEY not set", err=True)
         sys.exit(1)
 
-    async def run():
-        click.echo("Creating E2B sandbox with Claude Code...")
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        click.echo("❌ ANTHROPIC_API_KEY not set", err=True)
+        sys.exit(1)
 
-        # Create sandbox with Claude Code template
-        sbx = await AsyncSandbox.create(
-            "anthropic-claude-code",
-            timeout=3600,  # 1 hour
-            envs={"ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", "")},
-        )
-        click.echo(f"✓ Created sandbox: {sbx.sandbox_id}")
-        click.echo(f"\n🚀 Starting Claude Code...\n")
+    click.echo("Creating E2B sandbox with Claude Code...")
 
-        # Get terminal size
+    # Create sandbox with SDK to pass env vars
+    sbx = Sandbox.create(
+        template="anthropic-claude-code",
+        timeout=3600,
+        envs={"ANTHROPIC_API_KEY": api_key},
+    )
+    sandbox_id = sbx.sandbox_id
+    click.echo(f"✓ Created sandbox: {sandbox_id}")
+
+    # Set up shell to run claude on connect
+    sbx.files.write("/home/user/.bashrc", "exec claude\n")
+
+    click.echo("\n🚀 Starting Claude Code...\n")
+
+    # Connect with CLI for proper TTY handling
+    try:
+        subprocess.run(["e2b", "sandbox", "connect", sandbox_id])
+    except KeyboardInterrupt:
+        pass
+    finally:
+        click.echo("\n🗑️  Destroying sandbox...")
         try:
-            size = os.get_terminal_size()
-            cols, rows = size.columns, size.lines
-        except OSError:
-            cols, rows = 80, 24
-
-        # Set up raw mode for terminal
-        old_settings = termios.tcgetattr(sys.stdin)
-
-        try:
-            tty.setraw(sys.stdin.fileno())
-
-            # Create PTY with output handler
-            def on_data(data: bytes):
-                sys.stdout.buffer.write(data)
-                sys.stdout.buffer.flush()
-
-            handle = await sbx.pty.create(
-                PtySize(cols=cols, rows=rows),
-                on_data=on_data,
-                envs={"ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", "")},
-            )
-
-            # Start claude
-            await sbx.pty.send_stdin(handle.pid, b"claude\n")
-
-            # Handle terminal resize
-            def handle_resize(signum, frame):
-                try:
-                    size = os.get_terminal_size()
-                    asyncio.create_task(
-                        sbx.pty.resize(handle.pid, PtySize(cols=size.columns, rows=size.lines))
-                    )
-                except:
-                    pass
-
-            signal.signal(signal.SIGWINCH, handle_resize)
-
-            # Read stdin and forward to PTY
-            import select
-
-            while True:
-                if select.select([sys.stdin], [], [], 0.1)[0]:
-                    data = sys.stdin.buffer.read(1024)
-                    if data:
-                        await sbx.pty.send_stdin(handle.pid, data)
-                    else:
-                        break
-
-        except KeyboardInterrupt:
-            pass
-        finally:
-            # Restore terminal
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-            click.echo("\n\n🗑️  Destroying sandbox...")
-            await sbx.kill()
+            sbx.kill()
             click.echo("✓ Destroyed")
-
-    asyncio.run(run())
+        except Exception:
+            click.echo("(sandbox may have already timed out)")
 
 
 @cli.command()

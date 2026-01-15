@@ -42,8 +42,9 @@ sandboxes claude
 ### Setup (E2B - alternative)
 
 ```bash
-# Install sandboxes with E2B
+# Install sandboxes with E2B SDK and CLI
 pip install cased-sandboxes e2b
+npm install -g @e2b/cli
 
 # Set your API keys
 export E2B_API_KEY=your_key
@@ -53,7 +54,7 @@ export ANTHROPIC_API_KEY=your_key
 sandboxes claude -p e2b
 ```
 
-### Persistent Development Environment
+### Persistent Development Environment (Sprites only)
 
 ```bash
 # Create a named sandbox (automatically kept)
