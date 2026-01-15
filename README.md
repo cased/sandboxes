@@ -25,18 +25,32 @@ sandboxes claude
 
 That's it. You get an interactive Claude Code session in an isolated environment with Python 3.13, Node.js 22, and 100GB of storage.
 
-### Setup
+### Setup (Sprites - recommended)
 
 ```bash
 # Install sandboxes
 pip install cased-sandboxes
 
-# Install and login to Sprites (provides the sandbox)
+# Install and login to Sprites
 curl https://sprites.dev/install.sh | bash
 sprite login
 
 # Start Claude Code
 sandboxes claude
+```
+
+### Setup (E2B - alternative)
+
+```bash
+# Install sandboxes with E2B
+pip install cased-sandboxes e2b
+
+# Set your API keys
+export E2B_API_KEY=your_key
+export ANTHROPIC_API_KEY=your_key
+
+# Start Claude Code
+sandboxes claude -p e2b
 ```
 
 ### Persistent Development Environment

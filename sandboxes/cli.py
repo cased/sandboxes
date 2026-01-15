@@ -476,30 +476,8 @@ def providers():
     )
 
 
-@cli.command()
-@click.option("-n", "--name", default=None, help="Sandbox name (reuse existing)")
-@click.option("--keep", is_flag=True, help="Keep sandbox after exit")
-@click.option("--list", "list_sandboxes", is_flag=True, help="List existing Claude sandboxes")
-def claude(name: str | None, keep: bool, list_sandboxes: bool):
-    """Start an interactive Claude Code session in a sandbox.
-
-    This is the easiest way to use Claude Code safely:
-
-        sandboxes claude
-
-    Your sandbox has Claude Code, Python 3.13, and Node.js 22 pre-installed.
-    Just start coding!
-
-    For a persistent dev environment:
-
-        sandboxes claude -n myproject --keep
-        # Exit and come back later:
-        sandboxes claude -n myproject
-
-    To see existing sandboxes:
-
-        sandboxes claude --list
-    """
+def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
+    """Run Claude Code using Sprites provider."""
     import subprocess
     import shutil
 
@@ -581,6 +559,134 @@ def claude(name: str | None, keep: bool, list_sandboxes: bool):
             click.echo("✓ Destroyed")
         else:
             click.echo(f"\n💡 Resume anytime: sandboxes claude -n {name}")
+
+
+def _run_claude_e2b():
+    """Run Claude Code using E2B provider."""
+    import asyncio
+    import sys
+    import tty
+    import termios
+    import signal
+
+    try:
+        from e2b import AsyncSandbox
+        from e2b.sandbox.commands.command_handle import PtySize
+    except ImportError:
+        click.echo("❌ E2B SDK not installed. Install with:", err=True)
+        click.echo("   pip install e2b", err=True)
+        sys.exit(1)
+
+    if not os.getenv("E2B_API_KEY"):
+        click.echo("❌ E2B_API_KEY not set", err=True)
+        sys.exit(1)
+
+    async def run():
+        click.echo("Creating E2B sandbox with Claude Code...")
+
+        # Create sandbox with Claude Code template
+        sbx = await AsyncSandbox.create(
+            "anthropic-claude-code",
+            timeout=3600,  # 1 hour
+            envs={"ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", "")},
+        )
+        click.echo(f"✓ Created sandbox: {sbx.sandbox_id}")
+        click.echo(f"\n🚀 Starting Claude Code...\n")
+
+        # Get terminal size
+        try:
+            size = os.get_terminal_size()
+            cols, rows = size.columns, size.lines
+        except OSError:
+            cols, rows = 80, 24
+
+        # Set up raw mode for terminal
+        old_settings = termios.tcgetattr(sys.stdin)
+
+        try:
+            tty.setraw(sys.stdin.fileno())
+
+            # Create PTY with output handler
+            def on_data(data: bytes):
+                sys.stdout.buffer.write(data)
+                sys.stdout.buffer.flush()
+
+            handle = await sbx.pty.create(
+                PtySize(cols=cols, rows=rows),
+                on_data=on_data,
+                envs={"ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", "")},
+            )
+
+            # Start claude
+            await sbx.pty.send_stdin(handle.pid, b"claude\n")
+
+            # Handle terminal resize
+            def handle_resize(signum, frame):
+                try:
+                    size = os.get_terminal_size()
+                    asyncio.create_task(
+                        sbx.pty.resize(handle.pid, PtySize(cols=size.columns, rows=size.lines))
+                    )
+                except:
+                    pass
+
+            signal.signal(signal.SIGWINCH, handle_resize)
+
+            # Read stdin and forward to PTY
+            import select
+
+            while True:
+                if select.select([sys.stdin], [], [], 0.1)[0]:
+                    data = sys.stdin.buffer.read(1024)
+                    if data:
+                        await sbx.pty.send_stdin(handle.pid, data)
+                    else:
+                        break
+
+        except KeyboardInterrupt:
+            pass
+        finally:
+            # Restore terminal
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+            click.echo("\n\n🗑️  Destroying sandbox...")
+            await sbx.kill()
+            click.echo("✓ Destroyed")
+
+    asyncio.run(run())
+
+
+@cli.command()
+@click.option("-n", "--name", default=None, help="Sandbox name (reuse existing, Sprites only)")
+@click.option("-p", "--provider", default="sprites", type=click.Choice(["sprites", "e2b"]), help="Provider")
+@click.option("--keep", is_flag=True, help="Keep sandbox after exit (Sprites only)")
+@click.option("--list", "list_sandboxes", is_flag=True, help="List existing Claude sandboxes (Sprites only)")
+def claude(name: str | None, provider: str, keep: bool, list_sandboxes: bool):
+    """Start an interactive Claude Code session in a sandbox.
+
+    This is the easiest way to use Claude Code safely:
+
+        sandboxes claude
+
+    Using E2B instead of Sprites:
+
+        sandboxes claude -p e2b
+
+    For a persistent dev environment (Sprites only):
+
+        sandboxes claude -n myproject
+        # Exit and come back later:
+        sandboxes claude -n myproject
+
+    To see existing sandboxes:
+
+        sandboxes claude --list
+    """
+    if provider == "e2b":
+        if name or list_sandboxes:
+            click.echo("⚠️  Named sandboxes and --list only work with Sprites provider", err=True)
+        _run_claude_e2b()
+    else:
+        _run_claude_sprites(name, keep, list_sandboxes)
 
 
 @cli.command()
