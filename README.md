@@ -17,46 +17,48 @@ Includes a Python API plus full-featured CLI for use from any runtime.
 
 ## Claude Code Integration
 
-Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in secure sandboxes. Perfect for AI agents that need to execute code safely.
-
-### Python API
-
-```python
-from sandboxes.claude import run_claude_code
-
-# Run Claude Code in a sandbox (auto-selects provider)
-result = await run_claude_code(
-    "Create a Python script that fetches HN top stories",
-    provider="sprites"  # Sprites has Claude Code pre-installed
-)
-print(result.output)
-```
-
-### CLI
+Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in a secure sandbox with one command:
 
 ```bash
-# Non-interactive: run a prompt and get output
-sandboxes run "claude --print 'Write a hello world in Python'" -p sprites
-
-# Interactive: open a shell and run claude interactively
-sandboxes shell
-# Then inside the sandbox:
-# $ claude
+sandboxes claude
 ```
 
-### Recommended Provider: Sprites
+That's it. You get an interactive Claude Code session in an isolated environment with Python 3.13, Node.js 22, and 100GB of storage.
 
-[Sprites](https://sprites.dev) (Fly.io) comes with **Claude Code pre-installed**, making it the fastest option:
+### Setup
 
 ```bash
-# One-time setup
+# Install sandboxes
+pip install cased-sandboxes
+
+# Install and login to Sprites (provides the sandbox)
+curl https://sprites.dev/install.sh | bash
 sprite login
 
-# Then just use it
-sandboxes run "claude --print 'Build a web scraper'" -p sprites
+# Start Claude Code
+sandboxes claude
 ```
 
-Features: Claude Code 2.0+, Python 3.13, Node.js 22, 100GB storage, checkpoint/restore.
+### Persistent Development Environment
+
+```bash
+# Create a named sandbox that persists
+sandboxes claude -n myproject --keep
+
+# Work on your project...
+# Exit when done (Ctrl+C or /exit)
+
+# Come back later - your files are still there
+sandboxes claude -n myproject
+```
+
+### Why Sandboxes?
+
+Claude Code can read, write, and execute code. Running it in a sandbox means:
+- **Safe**: Can't touch your local files or system
+- **Isolated**: Each project gets its own environment
+- **Persistent**: Keep your sandbox for ongoing work
+- **Pre-configured**: Claude Code, Python, Node.js ready to go
 
 ## Installation
 

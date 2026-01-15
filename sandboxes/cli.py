@@ -477,52 +477,40 @@ def providers():
 
 
 @cli.command()
-@click.option("-p", "--provider", default="sprites", help="Provider (default: sprites)")
 @click.option("-n", "--name", default=None, help="Sandbox name (reuse existing)")
-@click.option("-l", "--label", multiple=True, help="Labels (key=value)")
 @click.option("--keep", is_flag=True, help="Keep sandbox after exit")
-def shell(provider: str, name: str | None, label: tuple, keep: bool):
-    """Open an interactive shell in a sandbox.
+def claude(name: str | None, keep: bool):
+    """Start an interactive Claude Code session in a sandbox.
 
-    Great for running Claude Code interactively:
+    This is the easiest way to use Claude Code safely:
 
-        sandboxes shell -p sprites
-        # Then inside: claude
+        sandboxes claude
 
-    Or with a specific sandbox name for reuse:
+    Your sandbox has Claude Code, Python 3.13, and Node.js 22 pre-installed.
+    Just start coding!
 
-        sandboxes shell -p sprites -n my-dev --keep
+    For a persistent dev environment:
+
+        sandboxes claude -n myproject --keep
+        # Exit and come back later:
+        sandboxes claude -n myproject
     """
     import subprocess
-
-    # Currently only sprites supports interactive console
-    if provider != "sprites":
-        click.echo(f"❌ Interactive shell only supported for sprites provider", err=True)
-        click.echo("Hint: Use 'sandboxes shell -p sprites'", err=True)
-        sys.exit(1)
-
     import shutil
 
     if not shutil.which("sprite"):
         click.echo("❌ sprite CLI not found. Install with:", err=True)
         click.echo("   curl https://sprites.dev/install.sh | bash", err=True)
+        click.echo("\nThen run: sprite login", err=True)
         sys.exit(1)
-
-    # Parse labels
-    labels = {}
-    for l in label:
-        if "=" in l:
-            k, v = l.split("=", 1)
-            labels[k] = v
 
     # Generate or use provided name
     if not name:
         import uuid
 
-        name = f"sandbox-{uuid.uuid4().hex[:8]}"
+        name = f"claude-{uuid.uuid4().hex[:8]}"
         click.echo(f"Creating sandbox: {name}")
 
-        # Create the sprite
         result = subprocess.run(
             ["sprite", "create", name], capture_output=True, text=True
         )
@@ -530,26 +518,87 @@ def shell(provider: str, name: str | None, label: tuple, keep: bool):
             click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
             sys.exit(1)
         click.echo(f"✓ Created {name}")
+        created_new = True
     else:
         click.echo(f"Using sandbox: {name}")
+        created_new = False
 
-    click.echo(f"\n🚀 Opening interactive shell...")
-    click.echo("   Run 'claude' for interactive Claude Code")
-    click.echo("   Press Ctrl+D to exit\n")
+    click.echo(f"\n🚀 Starting Claude Code...\n")
 
     try:
-        # Open interactive console - this replaces the current process
-        subprocess.run(["sprite", "console", "-s", name])
+        # Run claude directly in the sprite
+        subprocess.run(["sprite", "exec", "-s", name, "--", "claude"])
+    except KeyboardInterrupt:
+        click.echo("\n")
     finally:
-        if not keep:
+        if not keep and created_new:
             click.echo(f"\n🗑️  Destroying sandbox {name}...")
             subprocess.run(
                 ["sprite", "destroy", "-s", name, "-force"],
                 capture_output=True,
             )
             click.echo("✓ Destroyed")
-        else:
-            click.echo(f"\n💡 Sandbox kept. Reconnect with: sandboxes shell -p sprites -n {name}")
+        elif keep or not created_new:
+            click.echo(f"\n💡 Reconnect anytime: sandboxes claude -n {name}")
+
+
+@cli.command()
+@click.option("-p", "--provider", default="sprites", help="Provider (default: sprites)")
+@click.option("-n", "--name", default=None, help="Sandbox name (reuse existing)")
+@click.option("--keep", is_flag=True, help="Keep sandbox after exit")
+def shell(provider: str, name: str | None, keep: bool):
+    """Open an interactive shell in a sandbox.
+
+    For a raw shell (not Claude Code):
+
+        sandboxes shell -n my-dev --keep
+    """
+    import subprocess
+    import shutil
+
+    if provider != "sprites":
+        click.echo(f"❌ Interactive shell only supported for sprites provider", err=True)
+        sys.exit(1)
+
+    if not shutil.which("sprite"):
+        click.echo("❌ sprite CLI not found. Install with:", err=True)
+        click.echo("   curl https://sprites.dev/install.sh | bash", err=True)
+        sys.exit(1)
+
+    if not name:
+        import uuid
+
+        name = f"sandbox-{uuid.uuid4().hex[:8]}"
+        click.echo(f"Creating sandbox: {name}")
+
+        result = subprocess.run(
+            ["sprite", "create", name], capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
+            sys.exit(1)
+        click.echo(f"✓ Created {name}")
+        created_new = True
+    else:
+        click.echo(f"Using sandbox: {name}")
+        created_new = False
+
+    click.echo(f"\n🚀 Opening shell...\n")
+
+    try:
+        subprocess.run(["sprite", "console", "-s", name])
+    except KeyboardInterrupt:
+        click.echo("\n")
+    finally:
+        if not keep and created_new:
+            click.echo(f"\n🗑️  Destroying sandbox {name}...")
+            subprocess.run(
+                ["sprite", "destroy", "-s", name, "-force"],
+                capture_output=True,
+            )
+            click.echo("✓ Destroyed")
+        elif keep or not created_new:
+            click.echo(f"\n💡 Reconnect: sandboxes shell -n {name}")
 
 
 if __name__ == "__main__":
