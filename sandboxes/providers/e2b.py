@@ -59,9 +59,15 @@ class E2BProvider(SandboxProvider):
         """Provider name."""
         return "e2b"
 
-    async def _create_e2b_sandbox(self, template_id=None, env_vars=None):
+    async def _create_e2b_sandbox(self, template_id=None, env_vars=None, timeout=None):
         """Create E2B sandbox asynchronously."""
-        return await E2BSandbox.create(template=template_id, envs=env_vars, api_key=self.api_key)
+        # timeout sets the sandbox lifetime in seconds
+        return await E2BSandbox.create(
+            template=template_id,
+            envs=env_vars,
+            api_key=self.api_key,
+            timeout=timeout or self.timeout,
+        )
 
     def _to_sandbox(self, e2b_sandbox, metadata: dict[str, Any]) -> Sandbox:
         """Convert E2B sandbox to standard Sandbox."""
@@ -87,8 +93,11 @@ class E2BProvider(SandboxProvider):
                 or self.default_template
             )
 
-            # Create sandbox asynchronously
-            e2b_sandbox = await self._create_e2b_sandbox(template_id, config.env_vars)
+            # Create sandbox asynchronously with timeout for sandbox lifetime
+            sandbox_timeout = config.timeout_seconds or self.timeout
+            e2b_sandbox = await self._create_e2b_sandbox(
+                template_id, config.env_vars, timeout=sandbox_timeout
+            )
 
             # Store metadata
             metadata = {
@@ -216,6 +225,14 @@ class E2BProvider(SandboxProvider):
             metadata["last_accessed"] = time.time()
 
             start_time = time.time()
+            effective_timeout = timeout or self.timeout
+
+            # For long-running commands (>60s), use background execution with polling
+            # to work around E2B SDK timeout issues
+            if effective_timeout > 60:
+                return await self._execute_long_running(
+                    e2b_sandbox, command, effective_timeout, env_vars, start_time
+                )
 
             # Execute command using AsyncSandbox.commands.run()
             # Pass envs directly to the run method
@@ -223,7 +240,7 @@ class E2BProvider(SandboxProvider):
                 result = await e2b_sandbox.commands.run(
                     command,
                     envs=env_vars,
-                    timeout=timeout or self.timeout,
+                    timeout=effective_timeout,
                 )
                 exit_code = result.exit_code
                 stdout = result.stdout
@@ -252,6 +269,106 @@ class E2BProvider(SandboxProvider):
         except Exception as e:
             logger.error(f"Failed to execute command in sandbox {sandbox_id}: {e}")
             raise SandboxError(f"Failed to execute command: {e}") from e
+
+    async def _execute_long_running(
+        self,
+        e2b_sandbox,
+        command: str,
+        timeout: int,
+        env_vars: dict[str, str] | None,
+        start_time: float,
+    ) -> ExecutionResult:
+        """Execute long-running command using background execution with polling.
+
+        This works around E2B SDK timeout issues by running the command in background
+        and polling for completion.
+        """
+        import uuid
+
+        # Create unique output files
+        run_id = uuid.uuid4().hex[:8]
+        stdout_file = f"/tmp/cmd_{run_id}_stdout.txt"
+        stderr_file = f"/tmp/cmd_{run_id}_stderr.txt"
+        exit_file = f"/tmp/cmd_{run_id}_exit.txt"
+
+        # Build wrapper command that captures output and exit code
+        # Use nohup and & for background execution
+        # Escape single quotes in command for shell
+        escaped_command = command.replace("'", "'\"'\"'")
+        wrapper = f"""
+nohup sh -c '{escaped_command} > {stdout_file} 2> {stderr_file}; echo $? > {exit_file}' > /dev/null 2>&1 &
+echo $!
+"""
+        # Start the command in background
+        try:
+            result = await e2b_sandbox.commands.run(wrapper, envs=env_vars, timeout=10)
+            pid = result.stdout.strip()
+        except Exception as e:
+            logger.error(f"Failed to start background command: {e}")
+            raise
+
+        # Poll for completion
+        poll_interval = 1.0  # seconds
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            await asyncio.sleep(poll_interval)
+
+            # Check if exit code file exists (command completed)
+            try:
+                check_result = await e2b_sandbox.commands.run(
+                    f"cat {exit_file} 2>/dev/null || echo ''", timeout=5
+                )
+                exit_code_str = check_result.stdout.strip()
+                if exit_code_str:
+                    # Command completed
+                    exit_code = int(exit_code_str)
+
+                    # Read stdout
+                    stdout_result = await e2b_sandbox.commands.run(
+                        f"cat {stdout_file} 2>/dev/null || echo ''", timeout=10
+                    )
+                    stdout = stdout_result.stdout
+
+                    # Read stderr
+                    stderr_result = await e2b_sandbox.commands.run(
+                        f"cat {stderr_file} 2>/dev/null || echo ''", timeout=10
+                    )
+                    stderr = stderr_result.stdout
+
+                    # Cleanup temp files
+                    await e2b_sandbox.commands.run(
+                        f"rm -f {stdout_file} {stderr_file} {exit_file}", timeout=5
+                    )
+
+                    duration_ms = int((time.time() - start_time) * 1000)
+                    return ExecutionResult(
+                        exit_code=exit_code,
+                        stdout=stdout,
+                        stderr=stderr,
+                        duration_ms=duration_ms,
+                        truncated=False,
+                        timed_out=False,
+                    )
+            except Exception as poll_error:
+                logger.warning(f"Poll error: {poll_error}")
+                continue
+
+        # Timeout - try to kill the process
+        try:
+            await e2b_sandbox.commands.run(f"kill {pid} 2>/dev/null || true", timeout=5)
+        except Exception:
+            pass
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        return ExecutionResult(
+            exit_code=-1,
+            stdout="",
+            stderr=f"Command timed out after {timeout} seconds",
+            duration_ms=duration_ms,
+            truncated=False,
+            timed_out=True,
+        )
 
     async def stream_execution(
         self,

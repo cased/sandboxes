@@ -15,11 +15,13 @@ def get_provider(name: str):
     from sandboxes.providers.daytona import DaytonaProvider
     from sandboxes.providers.e2b import E2BProvider
     from sandboxes.providers.modal import ModalProvider
+    from sandboxes.providers.sprites import SpritesProvider
 
     providers = {
         "e2b": E2BProvider,
         "modal": ModalProvider,
         "daytona": DaytonaProvider,
+        "sprites": SpritesProvider,
         "cloudflare": CloudflareProvider,
     }
 
@@ -420,10 +422,18 @@ def providers():
     click.echo("\nAvailable Providers")
     click.echo("=" * 50)
 
+    import shutil
+
     providers = [
         ("e2b", "E2B_API_KEY", "E2B cloud sandboxes", False),
         ("modal", "~/.modal.toml", "Modal serverless containers", False),
         ("daytona", "DAYTONA_API_KEY", "Daytona development environments", False),
+        (
+            "sprites",
+            "SPRITES_TOKEN or sprite CLI",
+            "Fly.io Sprites (Claude Code pre-installed)",
+            False,
+        ),
         (
             "cloudflare",
             "CLOUDFLARE_API_TOKEN",
@@ -440,6 +450,8 @@ def providers():
             configured = bool(os.getenv("E2B_API_KEY"))
         elif name == "daytona":
             configured = bool(os.getenv("DAYTONA_API_KEY"))
+        elif name == "sprites":
+            configured = bool(os.getenv("SPRITES_TOKEN")) or shutil.which("sprite") is not None
         elif name == "cloudflare":
             configured = bool(os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_API_KEY"))
         else:
@@ -458,9 +470,135 @@ def providers():
     click.echo("  E2B: export E2B_API_KEY=your_key")
     click.echo("  Modal: modal token set")
     click.echo("  Daytona: export DAYTONA_API_KEY=your_key")
+    click.echo("  Sprites: sprite login (or export SPRITES_TOKEN=your_token)")
     click.echo(
         "  Cloudflare (experimental): Deploy Worker from https://github.com/cloudflare/sandbox-sdk"
     )
+
+
+@cli.command()
+@click.option("-n", "--name", default=None, help="Sandbox name (reuse existing)")
+@click.option("--keep", is_flag=True, help="Keep sandbox after exit")
+def claude(name: str | None, keep: bool):
+    """Start an interactive Claude Code session in a sandbox.
+
+    This is the easiest way to use Claude Code safely:
+
+        sandboxes claude
+
+    Your sandbox has Claude Code, Python 3.13, and Node.js 22 pre-installed.
+    Just start coding!
+
+    For a persistent dev environment:
+
+        sandboxes claude -n myproject --keep
+        # Exit and come back later:
+        sandboxes claude -n myproject
+    """
+    import subprocess
+    import shutil
+
+    if not shutil.which("sprite"):
+        click.echo("❌ sprite CLI not found. Install with:", err=True)
+        click.echo("   curl https://sprites.dev/install.sh | bash", err=True)
+        click.echo("\nThen run: sprite login", err=True)
+        sys.exit(1)
+
+    # Generate or use provided name
+    if not name:
+        import uuid
+
+        name = f"claude-{uuid.uuid4().hex[:8]}"
+        click.echo(f"Creating sandbox: {name}")
+
+        result = subprocess.run(
+            ["sprite", "create", name], capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
+            sys.exit(1)
+        click.echo(f"✓ Created {name}")
+        created_new = True
+    else:
+        click.echo(f"Using sandbox: {name}")
+        created_new = False
+
+    click.echo(f"\n🚀 Starting Claude Code...\n")
+
+    try:
+        # Run claude directly in the sprite
+        subprocess.run(["sprite", "exec", "-s", name, "--", "claude"])
+    except KeyboardInterrupt:
+        click.echo("\n")
+    finally:
+        if not keep and created_new:
+            click.echo(f"\n🗑️  Destroying sandbox {name}...")
+            subprocess.run(
+                ["sprite", "destroy", "-s", name, "-force"],
+                capture_output=True,
+            )
+            click.echo("✓ Destroyed")
+        elif keep or not created_new:
+            click.echo(f"\n💡 Reconnect anytime: sandboxes claude -n {name}")
+
+
+@cli.command()
+@click.option("-p", "--provider", default="sprites", help="Provider (default: sprites)")
+@click.option("-n", "--name", default=None, help="Sandbox name (reuse existing)")
+@click.option("--keep", is_flag=True, help="Keep sandbox after exit")
+def shell(provider: str, name: str | None, keep: bool):
+    """Open an interactive shell in a sandbox.
+
+    For a raw shell (not Claude Code):
+
+        sandboxes shell -n my-dev --keep
+    """
+    import subprocess
+    import shutil
+
+    if provider != "sprites":
+        click.echo(f"❌ Interactive shell only supported for sprites provider", err=True)
+        sys.exit(1)
+
+    if not shutil.which("sprite"):
+        click.echo("❌ sprite CLI not found. Install with:", err=True)
+        click.echo("   curl https://sprites.dev/install.sh | bash", err=True)
+        sys.exit(1)
+
+    if not name:
+        import uuid
+
+        name = f"sandbox-{uuid.uuid4().hex[:8]}"
+        click.echo(f"Creating sandbox: {name}")
+
+        result = subprocess.run(
+            ["sprite", "create", name], capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
+            sys.exit(1)
+        click.echo(f"✓ Created {name}")
+        created_new = True
+    else:
+        click.echo(f"Using sandbox: {name}")
+        created_new = False
+
+    click.echo(f"\n🚀 Opening shell...\n")
+
+    try:
+        subprocess.run(["sprite", "console", "-s", name])
+    except KeyboardInterrupt:
+        click.echo("\n")
+    finally:
+        if not keep and created_new:
+            click.echo(f"\n🗑️  Destroying sandbox {name}...")
+            subprocess.run(
+                ["sprite", "destroy", "-s", name, "-force"],
+                capture_output=True,
+            )
+            click.echo("✓ Destroyed")
+        elif keep or not created_new:
+            click.echo(f"\n💡 Reconnect: sandboxes shell -n {name}")
 
 
 if __name__ == "__main__":

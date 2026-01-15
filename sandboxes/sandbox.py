@@ -69,9 +69,10 @@ class Sandbox:
         Providers are registered in priority order:
         1. Daytona
         2. E2B
-        3. Hopx
-        4. Modal
-        5. Cloudflare (experimental)
+        3. Sprites
+        4. Hopx
+        5. Modal
+        6. Cloudflare (experimental)
 
         The first registered provider becomes the default unless explicitly set.
         Users can override with Sandbox.configure(default_provider="...").
@@ -82,6 +83,7 @@ class Sandbox:
             E2BProvider,
             HopxProvider,
             ModalProvider,
+            SpritesProvider,
         )
 
         manager = cls._manager
@@ -102,7 +104,22 @@ class Sandbox:
             except Exception:
                 pass
 
-        # Try to register Hopx (priority 3)
+        # Try to register Sprites (priority 3)
+        # Check for SPRITES_TOKEN or sprite CLI
+        import shutil
+
+        sprites_cli_available = shutil.which("sprite") is not None
+        if os.getenv("SPRITES_TOKEN") or sprites_cli_available:
+            try:
+                # Use CLI mode if no token but CLI is available
+                use_cli = not os.getenv("SPRITES_TOKEN") and sprites_cli_available
+                manager.register_provider("sprites", SpritesProvider, {"use_cli": use_cli})
+                mode = "CLI" if use_cli else "SDK"
+                print(f"✓ Registered Sprites provider ({mode} mode)")
+            except Exception:
+                pass
+
+        # Try to register Hopx (priority 4)
         if os.getenv("HOPX_API_KEY"):
             try:
                 manager.register_provider("hopx", HopxProvider, {})
@@ -110,7 +127,7 @@ class Sandbox:
             except Exception:
                 pass
 
-        # Try to register Modal (priority 4)
+        # Try to register Modal (priority 5)
         if os.path.exists(os.path.expanduser("~/.modal.toml")) or os.getenv("MODAL_TOKEN_ID"):
             try:
                 manager.register_provider("modal", ModalProvider, {})
@@ -118,7 +135,7 @@ class Sandbox:
             except Exception:
                 pass
 
-        # Try to register Cloudflare (priority 5 - experimental)
+        # Try to register Cloudflare (priority 6 - experimental)
         base_url = os.getenv("CLOUDFLARE_SANDBOX_BASE_URL")
         api_token = os.getenv("CLOUDFLARE_API_TOKEN")
         if base_url and api_token:
@@ -144,6 +161,7 @@ class Sandbox:
         modal_token: str | None = None,
         daytona_api_key: str | None = None,
         hopx_api_key: str | None = None,
+        sprites_token: str | None = None,
         cloudflare_config: dict[str, str] | None = None,
         default_provider: str | None = None,
     ) -> None:
@@ -153,8 +171,8 @@ class Sandbox:
         Example:
             Sandbox.configure(
                 e2b_api_key="...",
-                hopx_api_key="...",
-                default_provider="hopx"
+                sprites_token="...",
+                default_provider="sprites"
             )
         """
         from .providers import (
@@ -163,6 +181,7 @@ class Sandbox:
             E2BProvider,
             HopxProvider,
             ModalProvider,
+            SpritesProvider,
         )
 
         manager = cls._ensure_manager()
@@ -179,6 +198,9 @@ class Sandbox:
 
         if hopx_api_key:
             manager.register_provider("hopx", HopxProvider, {"api_key": hopx_api_key})
+
+        if sprites_token:
+            manager.register_provider("sprites", SpritesProvider, {"token": sprites_token})
 
         if cloudflare_config:
             manager.register_provider("cloudflare", CloudflareProvider, cloudflare_config)
