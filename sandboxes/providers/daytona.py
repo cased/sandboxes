@@ -53,6 +53,8 @@ class DaytonaProvider(SandboxProvider):
         self.default_language = config.get("default_language", "python")
         # Keep snapshot support for backwards compatibility
         self.default_snapshot = config.get("default_snapshot")
+        # Track sandbox metadata including env_vars
+        self._sandbox_metadata: dict[str, dict] = {}
 
     @property
     def name(self) -> str:
@@ -137,6 +139,11 @@ class DaytonaProvider(SandboxProvider):
 
             sandbox = self._to_sandbox(daytona_sandbox)
 
+            # Store env_vars for use in each command execution
+            self._sandbox_metadata[sandbox.id] = {
+                "env_vars": config.env_vars or {},
+            }
+
             # Run setup commands if provided
             if config.setup_commands:
                 for cmd in config.setup_commands:
@@ -188,9 +195,31 @@ class DaytonaProvider(SandboxProvider):
         try:
             sandbox = self.client.get(sandbox_id)
 
-            # Prepare command with environment variables
+            # Combine stored env_vars with any passed env_vars
+            all_env_vars = dict(self._sandbox_metadata.get(sandbox_id, {}).get("env_vars", {}))
             if env_vars:
-                exports = " && ".join([f"export {k}='{v}'" for k, v in env_vars.items()])
+                all_env_vars.update(env_vars)
+
+            # Prepare command with environment variables (with proper escaping)
+            if all_env_vars:
+                import re
+
+                def escape_shell_value(val: str) -> str:
+                    """Escape single quotes for shell: ' -> '\\''"""
+                    return val.replace("'", "'\\''")
+
+                def validate_env_key(key: str) -> str:
+                    """Validate env var key contains only safe characters."""
+                    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+                        raise ValueError(f"Invalid environment variable name: {key}")
+                    return key
+
+                exports = " && ".join(
+                    [
+                        f"export {validate_env_key(k)}='{escape_shell_value(str(v))}'"
+                        for k, v in all_env_vars.items()
+                    ]
+                )
                 command = f"{exports} && {command}"
 
             # Execute command using process.exec

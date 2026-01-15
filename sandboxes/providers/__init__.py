@@ -48,9 +48,9 @@ except ImportError:
     pass
 
 try:
-    from .cloudflare import CloudflareProvider
+    from .sprites import SpritesProvider
 
-    _providers["cloudflare"] = CloudflareProvider
+    _providers["sprites"] = SpritesProvider
 except ImportError:
     pass
 

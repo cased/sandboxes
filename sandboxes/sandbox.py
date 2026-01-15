@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import AsyncIterator
 from typing import Any
@@ -9,6 +10,8 @@ from typing import Any
 from .base import ExecutionResult, SandboxConfig
 from .base import Sandbox as BaseSandbox
 from .manager import SandboxManager
+
+logger = logging.getLogger(__name__)
 
 
 class _SandboxAsyncContextManager:
@@ -69,9 +72,10 @@ class Sandbox:
         Providers are registered in priority order:
         1. Daytona
         2. E2B
-        3. Hopx
-        4. Modal
-        5. Cloudflare (experimental)
+        3. Sprites
+        4. Hopx
+        5. Modal
+        6. Cloudflare (experimental)
 
         The first registered provider becomes the default unless explicitly set.
         Users can override with Sandbox.configure(default_provider="...").
@@ -82,6 +86,7 @@ class Sandbox:
             E2BProvider,
             HopxProvider,
             ModalProvider,
+            SpritesProvider,
         )
 
         manager = cls._manager
@@ -90,35 +95,50 @@ class Sandbox:
         if os.getenv("DAYTONA_API_KEY"):
             try:
                 manager.register_provider("daytona", DaytonaProvider, {})
-                print("✓ Registered Daytona provider")
-            except Exception:
-                pass
+                logger.info("Registered Daytona provider")
+            except Exception as e:
+                logger.debug(f"Failed to register Daytona provider: {e}")
 
         # Try to register E2B (priority 2)
         if os.getenv("E2B_API_KEY"):
             try:
                 manager.register_provider("e2b", E2BProvider, {})
-                print("✓ Registered E2B provider")
-            except Exception:
-                pass
+                logger.info("Registered E2B provider")
+            except Exception as e:
+                logger.debug(f"Failed to register E2B provider: {e}")
 
-        # Try to register Hopx (priority 3)
+        # Try to register Sprites (priority 3)
+        # Check for SPRITES_TOKEN or sprite CLI
+        import shutil
+
+        sprites_cli_available = shutil.which("sprite") is not None
+        if os.getenv("SPRITES_TOKEN") or sprites_cli_available:
+            try:
+                # Use CLI mode if no token but CLI is available
+                use_cli = not os.getenv("SPRITES_TOKEN") and sprites_cli_available
+                manager.register_provider("sprites", SpritesProvider, {"use_cli": use_cli})
+                mode = "CLI" if use_cli else "SDK"
+                logger.info(f"Registered Sprites provider ({mode} mode)")
+            except Exception as e:
+                logger.debug(f"Failed to register Sprites provider: {e}")
+
+        # Try to register Hopx (priority 4)
         if os.getenv("HOPX_API_KEY"):
             try:
                 manager.register_provider("hopx", HopxProvider, {})
-                print("✓ Registered Hopx provider")
-            except Exception:
-                pass
+                logger.info("Registered Hopx provider")
+            except Exception as e:
+                logger.debug(f"Failed to register Hopx provider: {e}")
 
-        # Try to register Modal (priority 4)
+        # Try to register Modal (priority 5)
         if os.path.exists(os.path.expanduser("~/.modal.toml")) or os.getenv("MODAL_TOKEN_ID"):
             try:
                 manager.register_provider("modal", ModalProvider, {})
-                print("✓ Registered Modal provider")
-            except Exception:
-                pass
+                logger.info("Registered Modal provider")
+            except Exception as e:
+                logger.debug(f"Failed to register Modal provider: {e}")
 
-        # Try to register Cloudflare (priority 5 - experimental)
+        # Try to register Cloudflare (priority 6 - experimental)
         base_url = os.getenv("CLOUDFLARE_SANDBOX_BASE_URL")
         api_token = os.getenv("CLOUDFLARE_API_TOKEN")
         if base_url and api_token:
@@ -132,9 +152,9 @@ class Sandbox:
                         "account_id": os.getenv("CLOUDFLARE_ACCOUNT_ID"),
                     },
                 )
-                print("✓ Registered Cloudflare provider (experimental)")
-            except Exception:
-                pass
+                logger.info("Registered Cloudflare provider (experimental)")
+            except Exception as e:
+                logger.debug(f"Failed to register Cloudflare provider: {e}")
 
     @classmethod
     def configure(
@@ -144,6 +164,7 @@ class Sandbox:
         modal_token: str | None = None,
         daytona_api_key: str | None = None,
         hopx_api_key: str | None = None,
+        sprites_token: str | None = None,
         cloudflare_config: dict[str, str] | None = None,
         default_provider: str | None = None,
     ) -> None:
@@ -153,8 +174,8 @@ class Sandbox:
         Example:
             Sandbox.configure(
                 e2b_api_key="...",
-                hopx_api_key="...",
-                default_provider="hopx"
+                sprites_token="...",
+                default_provider="sprites"
             )
         """
         from .providers import (
@@ -163,6 +184,7 @@ class Sandbox:
             E2BProvider,
             HopxProvider,
             ModalProvider,
+            SpritesProvider,
         )
 
         manager = cls._ensure_manager()
@@ -179,6 +201,9 @@ class Sandbox:
 
         if hopx_api_key:
             manager.register_provider("hopx", HopxProvider, {"api_key": hopx_api_key})
+
+        if sprites_token:
+            manager.register_provider("sprites", SpritesProvider, {"token": sprites_token})
 
         if cloudflare_config:
             manager.register_provider("cloudflare", CloudflareProvider, cloudflare_config)

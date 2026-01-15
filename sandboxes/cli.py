@@ -15,11 +15,13 @@ def get_provider(name: str):
     from sandboxes.providers.daytona import DaytonaProvider
     from sandboxes.providers.e2b import E2BProvider
     from sandboxes.providers.modal import ModalProvider
+    from sandboxes.providers.sprites import SpritesProvider
 
     providers = {
         "e2b": E2BProvider,
         "modal": ModalProvider,
         "daytona": DaytonaProvider,
+        "sprites": SpritesProvider,
         "cloudflare": CloudflareProvider,
     }
 
@@ -420,10 +422,18 @@ def providers():
     click.echo("\nAvailable Providers")
     click.echo("=" * 50)
 
+    import shutil
+
     providers = [
         ("e2b", "E2B_API_KEY", "E2B cloud sandboxes", False),
         ("modal", "~/.modal.toml", "Modal serverless containers", False),
         ("daytona", "DAYTONA_API_KEY", "Daytona development environments", False),
+        (
+            "sprites",
+            "SPRITES_TOKEN or sprite CLI",
+            "Fly.io Sprites (Claude Code pre-installed)",
+            False,
+        ),
         (
             "cloudflare",
             "CLOUDFLARE_API_TOKEN",
@@ -440,6 +450,8 @@ def providers():
             configured = bool(os.getenv("E2B_API_KEY"))
         elif name == "daytona":
             configured = bool(os.getenv("DAYTONA_API_KEY"))
+        elif name == "sprites":
+            configured = bool(os.getenv("SPRITES_TOKEN")) or shutil.which("sprite") is not None
         elif name == "cloudflare":
             configured = bool(os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_API_KEY"))
         else:
@@ -458,9 +470,249 @@ def providers():
     click.echo("  E2B: export E2B_API_KEY=your_key")
     click.echo("  Modal: modal token set")
     click.echo("  Daytona: export DAYTONA_API_KEY=your_key")
+    click.echo("  Sprites: sprite login (or export SPRITES_TOKEN=your_token)")
     click.echo(
         "  Cloudflare (experimental): Deploy Worker from https://github.com/cloudflare/sandbox-sdk"
     )
+
+
+def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
+    """Run Claude Code using Sprites provider."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("sprite"):
+        click.echo("❌ sprite CLI not found. Install with:", err=True)
+        click.echo("   curl https://sprites.dev/install.sh | bash", err=True)
+        click.echo("\nThen run: sprite login", err=True)
+        sys.exit(1)
+
+    # List existing sandboxes
+    if list_sandboxes:
+        result = subprocess.run(["sprite", "list"], capture_output=True, text=True)
+        if result.returncode == 0:
+            lines = result.stdout.strip().split("\n")
+            claude_sandboxes = [
+                line for line in lines if "claude-" in line or (name and name in line)
+            ]
+            if claude_sandboxes:
+                click.echo("Existing Claude sandboxes:")
+                for line in claude_sandboxes:
+                    click.echo(f"  {line}")
+                click.echo("\nResume with: sandboxes claude -n <name>")
+            else:
+                click.echo("No Claude sandboxes found.")
+                click.echo("Start one with: sandboxes claude")
+        else:
+            click.echo(result.stdout)
+        return
+
+    # Generate or use provided name
+    if not name:
+        import uuid
+
+        name = f"claude-{uuid.uuid4().hex[:8]}"
+        click.echo(f"Creating sandbox: {name}")
+
+        result = subprocess.run(["sprite", "create", name], capture_output=True, text=True)
+        if result.returncode != 0:
+            click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
+            sys.exit(1)
+        click.echo(f"✓ Created {name}")
+        created_new = True
+    else:
+        # Check if sandbox exists, create if not
+        result = subprocess.run(["sprite", "list"], capture_output=True, text=True)
+        # Parse output to find exact name match (avoid "claude" matching "claude-123")
+        existing_names = {
+            line.split()[0] for line in result.stdout.strip().split("\n") if line.strip()
+        }
+        if name in existing_names:
+            click.echo(f"Resuming sandbox: {name}")
+            created_new = False
+            keep = True  # Named sandboxes are kept by default
+        else:
+            click.echo(f"Creating sandbox: {name}")
+            result = subprocess.run(["sprite", "create", name], capture_output=True, text=True)
+            if result.returncode != 0:
+                click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
+                sys.exit(1)
+            click.echo(f"✓ Created {name}")
+            created_new = True
+            keep = True  # Named sandboxes are kept by default
+
+    click.echo("\n🚀 Starting Claude Code...\n")
+
+    try:
+        # Run claude directly in the sprite with TTY allocation
+        subprocess.run(["sprite", "exec", "-s", name, "-tty", "claude"])
+    except KeyboardInterrupt:
+        click.echo("\n")
+    finally:
+        if not keep and created_new:
+            click.echo(f"\n🗑️  Destroying sandbox {name}...")
+            subprocess.run(
+                ["sprite", "destroy", "-s", name, "-force"],
+                capture_output=True,
+            )
+            click.echo("✓ Destroyed")
+        else:
+            click.echo(f"\n💡 Resume anytime: sandboxes claude -n {name}")
+
+
+def _run_claude_e2b():
+    """Run Claude Code using E2B - SDK to create, CLI to connect."""
+    import shutil
+    import subprocess
+
+    # Check for E2B CLI
+    if not shutil.which("e2b"):
+        click.echo("❌ E2B CLI not found. Install with:", err=True)
+        click.echo("   npm install -g @e2b/cli", err=True)
+        sys.exit(1)
+
+    try:
+        from e2b import Sandbox
+    except ImportError:
+        click.echo("❌ E2B SDK not installed. Install with:", err=True)
+        click.echo("   uv pip install e2b", err=True)
+        sys.exit(1)
+
+    if not os.getenv("E2B_API_KEY"):
+        click.echo("❌ E2B_API_KEY not set", err=True)
+        sys.exit(1)
+
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        click.echo("❌ ANTHROPIC_API_KEY not set", err=True)
+        sys.exit(1)
+
+    click.echo("Creating E2B sandbox with Claude Code...")
+
+    # Create sandbox with SDK to pass env vars
+    sbx = Sandbox.create(
+        template="anthropic-claude-code",
+        timeout=3600,
+        envs={"ANTHROPIC_API_KEY": api_key},
+    )
+    sandbox_id = sbx.sandbox_id
+    click.echo(f"✓ Created sandbox: {sandbox_id}")
+
+    # Set up a wrapper script to run claude on connect (avoid overwriting .bashrc)
+    sbx.files.write("/tmp/start-claude.sh", "#!/bin/bash\nexec claude\n")
+    sbx.commands.run("chmod +x /tmp/start-claude.sh")
+    # Append to .bashrc to run our script
+    sbx.commands.run("echo 'exec /tmp/start-claude.sh' >> /home/user/.bashrc")
+
+    click.echo("\n🚀 Starting Claude Code...\n")
+
+    # Connect with CLI for proper TTY handling
+    try:
+        subprocess.run(["e2b", "sandbox", "connect", sandbox_id])
+    except KeyboardInterrupt:
+        pass
+    finally:
+        click.echo("\n🗑️  Destroying sandbox...")
+        try:
+            sbx.kill()
+            click.echo("✓ Destroyed")
+        except Exception:
+            click.echo("(sandbox may have already timed out)")
+
+
+@cli.command()
+@click.option("-n", "--name", default=None, help="Sandbox name (reuse existing, Sprites only)")
+@click.option(
+    "-p", "--provider", default="sprites", type=click.Choice(["sprites", "e2b"]), help="Provider"
+)
+@click.option("--keep", is_flag=True, help="Keep sandbox after exit (Sprites only)")
+@click.option(
+    "--list", "list_sandboxes", is_flag=True, help="List existing Claude sandboxes (Sprites only)"
+)
+def claude(name: str | None, provider: str, keep: bool, list_sandboxes: bool):
+    """Start an interactive Claude Code session in a sandbox.
+
+    This is the easiest way to use Claude Code safely:
+
+        sandboxes claude
+
+    Using E2B instead of Sprites:
+
+        sandboxes claude -p e2b
+
+    For a persistent dev environment (Sprites only):
+
+        sandboxes claude -n myproject
+        # Exit and come back later:
+        sandboxes claude -n myproject
+
+    To see existing sandboxes:
+
+        sandboxes claude --list
+    """
+    if provider == "e2b":
+        if name or list_sandboxes:
+            click.echo("⚠️  Named sandboxes and --list only work with Sprites provider", err=True)
+        _run_claude_e2b()
+    else:
+        _run_claude_sprites(name, keep, list_sandboxes)
+
+
+@cli.command()
+@click.option("-p", "--provider", default="sprites", help="Provider (default: sprites)")
+@click.option("-n", "--name", default=None, help="Sandbox name (reuse existing)")
+@click.option("--keep", is_flag=True, help="Keep sandbox after exit")
+def shell(provider: str, name: str | None, keep: bool):
+    """Open an interactive shell in a sandbox.
+
+    For a raw shell (not Claude Code):
+
+        sandboxes shell -n my-dev --keep
+    """
+    import shutil
+    import subprocess
+
+    if provider != "sprites":
+        click.echo("❌ Interactive shell only supported for sprites provider", err=True)
+        sys.exit(1)
+
+    if not shutil.which("sprite"):
+        click.echo("❌ sprite CLI not found. Install with:", err=True)
+        click.echo("   curl https://sprites.dev/install.sh | bash", err=True)
+        sys.exit(1)
+
+    if not name:
+        import uuid
+
+        name = f"sandbox-{uuid.uuid4().hex[:8]}"
+        click.echo(f"Creating sandbox: {name}")
+
+        result = subprocess.run(["sprite", "create", name], capture_output=True, text=True)
+        if result.returncode != 0:
+            click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
+            sys.exit(1)
+        click.echo(f"✓ Created {name}")
+        created_new = True
+    else:
+        click.echo(f"Using sandbox: {name}")
+        created_new = False
+
+    click.echo("\n🚀 Opening shell...\n")
+
+    try:
+        subprocess.run(["sprite", "console", "-s", name])
+    except KeyboardInterrupt:
+        click.echo("\n")
+    finally:
+        if not keep and created_new:
+            click.echo(f"\n🗑️  Destroying sandbox {name}...")
+            subprocess.run(
+                ["sprite", "destroy", "-s", name, "-force"],
+                capture_output=True,
+            )
+            click.echo("✓ Destroyed")
+        elif keep or not created_new:
+            click.echo(f"\n💡 Reconnect: sandboxes shell -n {name}")
 
 
 if __name__ == "__main__":
