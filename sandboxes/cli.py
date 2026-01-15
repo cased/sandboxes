@@ -523,9 +523,12 @@ def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
     else:
         # Check if sandbox exists, create if not
         result = subprocess.run(["sprite", "list"], capture_output=True, text=True)
-        if name in result.stdout:
+        # Parse output to find exact name match (avoid "claude" matching "claude-123")
+        existing_names = {line.split()[0] for line in result.stdout.strip().split("\n") if line.strip()}
+        if name in existing_names:
             click.echo(f"Resuming sandbox: {name}")
             created_new = False
+            keep = True  # Named sandboxes are kept by default
         else:
             click.echo(f"Creating sandbox: {name}")
             result = subprocess.run(["sprite", "create", name], capture_output=True, text=True)
@@ -570,7 +573,7 @@ def _run_claude_e2b():
         from e2b import Sandbox
     except ImportError:
         click.echo("❌ E2B SDK not installed. Install with:", err=True)
-        click.echo("   pip install e2b", err=True)
+        click.echo("   uv pip install e2b", err=True)
         sys.exit(1)
 
     if not os.getenv("E2B_API_KEY"):
@@ -593,8 +596,11 @@ def _run_claude_e2b():
     sandbox_id = sbx.sandbox_id
     click.echo(f"✓ Created sandbox: {sandbox_id}")
 
-    # Set up shell to run claude on connect
-    sbx.files.write("/home/user/.bashrc", "exec claude\n")
+    # Set up a wrapper script to run claude on connect (avoid overwriting .bashrc)
+    sbx.files.write("/tmp/start-claude.sh", "#!/bin/bash\nexec claude\n")
+    sbx.commands.run("chmod +x /tmp/start-claude.sh")
+    # Append to .bashrc to run our script
+    sbx.commands.run("echo 'exec /tmp/start-claude.sh' >> /home/user/.bashrc")
 
     click.echo("\n🚀 Starting Claude Code...\n")
 

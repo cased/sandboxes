@@ -267,9 +267,26 @@ class ModalProvider(SandboxProvider):
             if env_vars:
                 all_env_vars.update(env_vars)
 
-            # Prepare command with environment variables
+            # Prepare command with environment variables (with proper escaping)
             if all_env_vars:
-                env_setup = " && ".join([f"export {k}='{v}'" for k, v in all_env_vars.items()])
+                import re
+
+                def escape_shell_value(val: str) -> str:
+                    """Escape single quotes for shell: ' -> '\\''"""
+                    return val.replace("'", "'\\''")
+
+                def validate_env_key(key: str) -> str:
+                    """Validate env var key contains only safe characters."""
+                    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+                        raise ValueError(f"Invalid environment variable name: {key}")
+                    return key
+
+                env_setup = " && ".join(
+                    [
+                        f"export {validate_env_key(k)}='{escape_shell_value(str(v))}'"
+                        for k, v in all_env_vars.items()
+                    ]
+                )
                 command = f"{env_setup} && {command}"
 
             # Execute command in thread pool

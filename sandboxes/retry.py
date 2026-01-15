@@ -566,8 +566,12 @@ class RateLimiter:
         pass
 
     async def _reset_loop(self):
-        """Periodically reset the semaphore."""
+        """Periodically release permits back to the semaphore."""
+        import contextlib
+
         while True:
             await asyncio.sleep(self.period)
-            # Reset available permits
-            self.semaphore._value = min(self.semaphore._value + 1, self.rate)
+            # Release a permit back to the semaphore (up to max rate)
+            # ValueError raised if semaphore already at max
+            with contextlib.suppress(ValueError):
+                self.semaphore.release()

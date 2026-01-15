@@ -355,10 +355,10 @@ echo $!
                 continue
 
         # Timeout - try to kill the process
-        try:  # noqa: SIM105
+        try:
             await e2b_sandbox.commands.run(f"kill {pid} 2>/dev/null || true", timeout=5)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to kill timed-out process {pid}: {e}")
 
         duration_ms = int((time.time() - start_time) * 1000)
         return ExecutionResult(

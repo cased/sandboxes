@@ -607,7 +607,7 @@ class ConnectionPool:
                 await self.provider.destroy_sandbox(conn_id)
                 del self._connections[conn_id]
                 del self._connection_metadata[conn_id]
-                self._idle_connections.remove(conn_id)
+                self._idle_connections.discard(conn_id)
 
     def get_metrics(self) -> dict[str, Any]:
         """Get pool metrics."""

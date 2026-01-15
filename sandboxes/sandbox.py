@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import AsyncIterator
 from typing import Any
@@ -9,6 +10,8 @@ from typing import Any
 from .base import ExecutionResult, SandboxConfig
 from .base import Sandbox as BaseSandbox
 from .manager import SandboxManager
+
+logger = logging.getLogger(__name__)
 
 
 class _SandboxAsyncContextManager:
@@ -92,17 +95,17 @@ class Sandbox:
         if os.getenv("DAYTONA_API_KEY"):
             try:
                 manager.register_provider("daytona", DaytonaProvider, {})
-                print("✓ Registered Daytona provider")
-            except Exception:
-                pass
+                logger.info("Registered Daytona provider")
+            except Exception as e:
+                logger.debug(f"Failed to register Daytona provider: {e}")
 
         # Try to register E2B (priority 2)
         if os.getenv("E2B_API_KEY"):
             try:
                 manager.register_provider("e2b", E2BProvider, {})
-                print("✓ Registered E2B provider")
-            except Exception:
-                pass
+                logger.info("Registered E2B provider")
+            except Exception as e:
+                logger.debug(f"Failed to register E2B provider: {e}")
 
         # Try to register Sprites (priority 3)
         # Check for SPRITES_TOKEN or sprite CLI
@@ -115,25 +118,25 @@ class Sandbox:
                 use_cli = not os.getenv("SPRITES_TOKEN") and sprites_cli_available
                 manager.register_provider("sprites", SpritesProvider, {"use_cli": use_cli})
                 mode = "CLI" if use_cli else "SDK"
-                print(f"✓ Registered Sprites provider ({mode} mode)")
-            except Exception:
-                pass
+                logger.info(f"Registered Sprites provider ({mode} mode)")
+            except Exception as e:
+                logger.debug(f"Failed to register Sprites provider: {e}")
 
         # Try to register Hopx (priority 4)
         if os.getenv("HOPX_API_KEY"):
             try:
                 manager.register_provider("hopx", HopxProvider, {})
-                print("✓ Registered Hopx provider")
-            except Exception:
-                pass
+                logger.info("Registered Hopx provider")
+            except Exception as e:
+                logger.debug(f"Failed to register Hopx provider: {e}")
 
         # Try to register Modal (priority 5)
         if os.path.exists(os.path.expanduser("~/.modal.toml")) or os.getenv("MODAL_TOKEN_ID"):
             try:
                 manager.register_provider("modal", ModalProvider, {})
-                print("✓ Registered Modal provider")
-            except Exception:
-                pass
+                logger.info("Registered Modal provider")
+            except Exception as e:
+                logger.debug(f"Failed to register Modal provider: {e}")
 
         # Try to register Cloudflare (priority 6 - experimental)
         base_url = os.getenv("CLOUDFLARE_SANDBOX_BASE_URL")
@@ -149,9 +152,9 @@ class Sandbox:
                         "account_id": os.getenv("CLOUDFLARE_ACCOUNT_ID"),
                     },
                 )
-                print("✓ Registered Cloudflare provider (experimental)")
-            except Exception:
-                pass
+                logger.info("Registered Cloudflare provider (experimental)")
+            except Exception as e:
+                logger.debug(f"Failed to register Cloudflare provider: {e}")
 
     @classmethod
     def configure(

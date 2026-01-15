@@ -174,12 +174,19 @@ class SpritesProvider(SandboxProvider):
 
         # Try to access the sprite to check if it exists
         try:
-            sprite = self.client.sprite(sandbox_id)
-            # Run a quick command to verify it's accessible
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, lambda: sprite.run("true", capture_output=True, timeout=10)
-            )
+            if self.use_cli:
+                # Use CLI: check if sprite exists by running a command
+                result = await self._run_cli("exec", "-s", sandbox_id, "--", "true", timeout=10)
+                if result.returncode != 0:
+                    return None
+            else:
+                # Use SDK
+                sprite = self.client.sprite(sandbox_id)
+                # Run a quick command to verify it's accessible
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None, lambda: sprite.run("true", capture_output=True, timeout=10)
+                )
 
             # Create metadata for found sprite
             metadata = {
@@ -430,7 +437,13 @@ class SpritesProvider(SandboxProvider):
 
         Returns:
             Checkpoint ID
+
+        Note:
+            Checkpoint operations require SDK mode (SPRITES_TOKEN).
         """
+        if self.use_cli:
+            raise SandboxError("Checkpoint operations require SDK mode. Set SPRITES_TOKEN env var.")
+
         try:
             sprite = self.client.sprite(sandbox_id)
             loop = asyncio.get_event_loop()
@@ -460,7 +473,13 @@ class SpritesProvider(SandboxProvider):
 
         Returns:
             True if successful
+
+        Note:
+            Checkpoint operations require SDK mode (SPRITES_TOKEN).
         """
+        if self.use_cli:
+            raise SandboxError("Checkpoint operations require SDK mode. Set SPRITES_TOKEN env var.")
+
         try:
             sprite = self.client.sprite(sandbox_id)
             loop = asyncio.get_event_loop()
