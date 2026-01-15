@@ -479,7 +479,8 @@ def providers():
 @cli.command()
 @click.option("-n", "--name", default=None, help="Sandbox name (reuse existing)")
 @click.option("--keep", is_flag=True, help="Keep sandbox after exit")
-def claude(name: str | None, keep: bool):
+@click.option("--list", "list_sandboxes", is_flag=True, help="List existing Claude sandboxes")
+def claude(name: str | None, keep: bool, list_sandboxes: bool):
     """Start an interactive Claude Code session in a sandbox.
 
     This is the easiest way to use Claude Code safely:
@@ -494,6 +495,10 @@ def claude(name: str | None, keep: bool):
         sandboxes claude -n myproject --keep
         # Exit and come back later:
         sandboxes claude -n myproject
+
+    To see existing sandboxes:
+
+        sandboxes claude --list
     """
     import subprocess
     import shutil
@@ -503,6 +508,26 @@ def claude(name: str | None, keep: bool):
         click.echo("   curl https://sprites.dev/install.sh | bash", err=True)
         click.echo("\nThen run: sprite login", err=True)
         sys.exit(1)
+
+    # List existing sandboxes
+    if list_sandboxes:
+        result = subprocess.run(
+            ["sprite", "list"], capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            lines = result.stdout.strip().split('\n')
+            claude_sandboxes = [l for l in lines if 'claude-' in l or (name and name in l)]
+            if claude_sandboxes:
+                click.echo("Existing Claude sandboxes:")
+                for line in claude_sandboxes:
+                    click.echo(f"  {line}")
+                click.echo(f"\nResume with: sandboxes claude -n <name>")
+            else:
+                click.echo("No Claude sandboxes found.")
+                click.echo("Start one with: sandboxes claude")
+        else:
+            click.echo(result.stdout)
+        return
 
     # Generate or use provided name
     if not name:
@@ -520,14 +545,30 @@ def claude(name: str | None, keep: bool):
         click.echo(f"✓ Created {name}")
         created_new = True
     else:
-        click.echo(f"Using sandbox: {name}")
-        created_new = False
+        # Check if sandbox exists, create if not
+        result = subprocess.run(
+            ["sprite", "list"], capture_output=True, text=True
+        )
+        if name in result.stdout:
+            click.echo(f"Resuming sandbox: {name}")
+            created_new = False
+        else:
+            click.echo(f"Creating sandbox: {name}")
+            result = subprocess.run(
+                ["sprite", "create", name], capture_output=True, text=True
+            )
+            if result.returncode != 0:
+                click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
+                sys.exit(1)
+            click.echo(f"✓ Created {name}")
+            created_new = True
+            keep = True  # Named sandboxes are kept by default
 
     click.echo(f"\n🚀 Starting Claude Code...\n")
 
     try:
-        # Run claude directly in the sprite
-        subprocess.run(["sprite", "exec", "-s", name, "--", "claude"])
+        # Run claude directly in the sprite with TTY allocation
+        subprocess.run(["sprite", "exec", "-s", name, "-tty", "claude"])
     except KeyboardInterrupt:
         click.echo("\n")
     finally:
@@ -538,8 +579,8 @@ def claude(name: str | None, keep: bool):
                 capture_output=True,
             )
             click.echo("✓ Destroyed")
-        elif keep or not created_new:
-            click.echo(f"\n💡 Reconnect anytime: sandboxes claude -n {name}")
+        else:
+            click.echo(f"\n💡 Resume anytime: sandboxes claude -n {name}")
 
 
 @cli.command()

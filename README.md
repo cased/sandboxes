@@ -42,14 +42,17 @@ sandboxes claude
 ### Persistent Development Environment
 
 ```bash
-# Create a named sandbox that persists
-sandboxes claude -n myproject --keep
+# Create a named sandbox (automatically kept)
+sandboxes claude -n myproject
 
 # Work on your project...
-# Exit when done (Ctrl+C or /exit)
+# Exit when done (/exit or Ctrl+C)
 
 # Come back later - your files are still there
 sandboxes claude -n myproject
+
+# List your sandboxes
+sandboxes claude --list
 ```
 
 ### Why Sandboxes?
@@ -57,7 +60,7 @@ sandboxes claude -n myproject
 Claude Code can read, write, and execute code. Running it in a sandbox means:
 - **Safe**: Can't touch your local files or system
 - **Isolated**: Each project gets its own environment
-- **Persistent**: Keep your sandbox for ongoing work
+- **Persistent**: Named sandboxes keep your files across sessions
 - **Pre-configured**: Claude Code, Python, Node.js ready to go
 
 ## Installation
