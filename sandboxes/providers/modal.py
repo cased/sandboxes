@@ -78,11 +78,7 @@ class ModalProvider(SandboxProvider):
         app = modal.App.lookup("sandboxes-provider", create_if_missing=True)
 
         # Handle both string images and modal.Image objects
-        if isinstance(image, str):
-            modal_image = modal.Image.from_registry(image)
-        else:
-            # Assume it's already a modal.Image
-            modal_image = image
+        modal_image = modal.Image.from_registry(image) if isinstance(image, str) else image
 
         # Create Modal sandbox with specified resources
         sandbox = ModalSandbox.create(

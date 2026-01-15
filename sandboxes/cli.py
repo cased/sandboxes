@@ -478,8 +478,8 @@ def providers():
 
 def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
     """Run Claude Code using Sprites provider."""
-    import subprocess
     import shutil
+    import subprocess
 
     if not shutil.which("sprite"):
         click.echo("❌ sprite CLI not found. Install with:", err=True)
@@ -489,17 +489,17 @@ def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
 
     # List existing sandboxes
     if list_sandboxes:
-        result = subprocess.run(
-            ["sprite", "list"], capture_output=True, text=True
-        )
+        result = subprocess.run(["sprite", "list"], capture_output=True, text=True)
         if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            claude_sandboxes = [l for l in lines if 'claude-' in l or (name and name in l)]
+            lines = result.stdout.strip().split("\n")
+            claude_sandboxes = [
+                line for line in lines if "claude-" in line or (name and name in line)
+            ]
             if claude_sandboxes:
                 click.echo("Existing Claude sandboxes:")
                 for line in claude_sandboxes:
                     click.echo(f"  {line}")
-                click.echo(f"\nResume with: sandboxes claude -n <name>")
+                click.echo("\nResume with: sandboxes claude -n <name>")
             else:
                 click.echo("No Claude sandboxes found.")
                 click.echo("Start one with: sandboxes claude")
@@ -514,9 +514,7 @@ def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
         name = f"claude-{uuid.uuid4().hex[:8]}"
         click.echo(f"Creating sandbox: {name}")
 
-        result = subprocess.run(
-            ["sprite", "create", name], capture_output=True, text=True
-        )
+        result = subprocess.run(["sprite", "create", name], capture_output=True, text=True)
         if result.returncode != 0:
             click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
             sys.exit(1)
@@ -524,17 +522,13 @@ def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
         created_new = True
     else:
         # Check if sandbox exists, create if not
-        result = subprocess.run(
-            ["sprite", "list"], capture_output=True, text=True
-        )
+        result = subprocess.run(["sprite", "list"], capture_output=True, text=True)
         if name in result.stdout:
             click.echo(f"Resuming sandbox: {name}")
             created_new = False
         else:
             click.echo(f"Creating sandbox: {name}")
-            result = subprocess.run(
-                ["sprite", "create", name], capture_output=True, text=True
-            )
+            result = subprocess.run(["sprite", "create", name], capture_output=True, text=True)
             if result.returncode != 0:
                 click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
                 sys.exit(1)
@@ -542,7 +536,7 @@ def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
             created_new = True
             keep = True  # Named sandboxes are kept by default
 
-    click.echo(f"\n🚀 Starting Claude Code...\n")
+    click.echo("\n🚀 Starting Claude Code...\n")
 
     try:
         # Run claude directly in the sprite with TTY allocation
@@ -620,9 +614,13 @@ def _run_claude_e2b():
 
 @cli.command()
 @click.option("-n", "--name", default=None, help="Sandbox name (reuse existing, Sprites only)")
-@click.option("-p", "--provider", default="sprites", type=click.Choice(["sprites", "e2b"]), help="Provider")
+@click.option(
+    "-p", "--provider", default="sprites", type=click.Choice(["sprites", "e2b"]), help="Provider"
+)
 @click.option("--keep", is_flag=True, help="Keep sandbox after exit (Sprites only)")
-@click.option("--list", "list_sandboxes", is_flag=True, help="List existing Claude sandboxes (Sprites only)")
+@click.option(
+    "--list", "list_sandboxes", is_flag=True, help="List existing Claude sandboxes (Sprites only)"
+)
 def claude(name: str | None, provider: str, keep: bool, list_sandboxes: bool):
     """Start an interactive Claude Code session in a sandbox.
 
@@ -663,11 +661,11 @@ def shell(provider: str, name: str | None, keep: bool):
 
         sandboxes shell -n my-dev --keep
     """
-    import subprocess
     import shutil
+    import subprocess
 
     if provider != "sprites":
-        click.echo(f"❌ Interactive shell only supported for sprites provider", err=True)
+        click.echo("❌ Interactive shell only supported for sprites provider", err=True)
         sys.exit(1)
 
     if not shutil.which("sprite"):
@@ -681,9 +679,7 @@ def shell(provider: str, name: str | None, keep: bool):
         name = f"sandbox-{uuid.uuid4().hex[:8]}"
         click.echo(f"Creating sandbox: {name}")
 
-        result = subprocess.run(
-            ["sprite", "create", name], capture_output=True, text=True
-        )
+        result = subprocess.run(["sprite", "create", name], capture_output=True, text=True)
         if result.returncode != 0:
             click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
             sys.exit(1)
@@ -693,7 +689,7 @@ def shell(provider: str, name: str | None, keep: bool):
         click.echo(f"Using sandbox: {name}")
         created_new = False
 
-    click.echo(f"\n🚀 Opening shell...\n")
+    click.echo("\n🚀 Opening shell...\n")
 
     try:
         subprocess.run(["sprite", "console", "-s", name])

@@ -355,7 +355,7 @@ echo $!
                 continue
 
         # Timeout - try to kill the process
-        try:
+        try:  # noqa: SIM105
             await e2b_sandbox.commands.run(f"kill {pid} 2>/dev/null || true", timeout=5)
         except Exception:
             pass
