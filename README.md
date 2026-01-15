@@ -15,6 +15,18 @@ Universal library for AI code execution sandboxes.
 Write your code once and switch between providers with a single line change, or let the library automatically select a provider.
 Includes a Python API plus full-featured CLI for use from any runtime.
 
+## Installation
+
+```bash
+uv pip install cased-sandboxes
+```
+
+Or add to your project:
+
+```bash
+uv add cased-sandboxes
+```
+
 ## Claude Code Integration
 
 Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in a secure sandbox with one command:
@@ -28,9 +40,6 @@ That's it. You get an interactive Claude Code session in an isolated environment
 ### Setup (Sprites - recommended)
 
 ```bash
-# Install sandboxes
-pip install cased-sandboxes
-
 # Install and login to Sprites
 curl https://sprites.dev/install.sh | bash
 sprite login
@@ -42,8 +51,8 @@ sandboxes claude
 ### Setup (E2B - alternative)
 
 ```bash
-# Install sandboxes with E2B SDK and CLI
-pip install cased-sandboxes e2b
+# Install E2B SDK and CLI
+uv pip install e2b
 npm install -g @e2b/cli
 
 # Set your API keys
@@ -77,21 +86,6 @@ Claude Code can read, write, and execute code. Running it in a sandbox means:
 - **Isolated**: Each project gets its own environment
 - **Persistent**: Named sandboxes keep your files across sessions
 - **Pre-configured**: Claude Code, Python, Node.js ready to go
-
-## Installation
-
-Add to your project:
-
-```bash
-uv add cased-sandboxes
-```
-
-or install with your preferred Python package manager and use the CLI
-for any language, e.g.,:
-
-```bash
-uv pip install cased-sandboxes
-```
 
 ## Quick Start
 
