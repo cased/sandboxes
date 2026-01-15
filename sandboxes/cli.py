@@ -524,7 +524,9 @@ def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
         # Check if sandbox exists, create if not
         result = subprocess.run(["sprite", "list"], capture_output=True, text=True)
         # Parse output to find exact name match (avoid "claude" matching "claude-123")
-        existing_names = {line.split()[0] for line in result.stdout.strip().split("\n") if line.strip()}
+        existing_names = {
+            line.split()[0] for line in result.stdout.strip().split("\n") if line.strip()
+        }
         if name in existing_names:
             click.echo(f"Resuming sandbox: {name}")
             created_new = False
