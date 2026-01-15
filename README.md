@@ -9,11 +9,49 @@ Universal library for AI code execution sandboxes.
 
 `sandboxes` provides a unified interface for sandboxed code execution across multiple providers:
 
-- **Current providers**: E2B, Modal, Daytona, Hopx
+- **Current providers**: E2B, Modal, Daytona, Hopx, Sprites (Fly.io)
 - **Experimental**: Cloudflare (requires self-hosted Worker deployment)
 
 Write your code once and switch between providers with a single line change, or let the library automatically select a provider.
 Includes a Python API plus full-featured CLI for use from any runtime.
+
+## Claude Code Integration
+
+Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in secure sandboxes. Perfect for AI agents that need to execute code safely.
+
+### Python API
+
+```python
+from sandboxes.claude import run_claude_code
+
+# Run Claude Code in a sandbox (auto-selects provider)
+result = await run_claude_code(
+    "Create a Python script that fetches HN top stories",
+    provider="sprites"  # Sprites has Claude Code pre-installed
+)
+print(result.output)
+```
+
+### CLI
+
+```bash
+# Run Claude Code in a sandbox from your terminal
+sandboxes run "claude --print 'Write a hello world in Python'" -p sprites
+```
+
+### Recommended Provider: Sprites
+
+[Sprites](https://sprites.dev) (Fly.io) comes with **Claude Code pre-installed**, making it the fastest option:
+
+```bash
+# One-time setup
+sprite login
+
+# Then just use it
+sandboxes run "claude --print 'Build a web scraper'" -p sprites
+```
+
+Features: Claude Code 2.0+, Python 3.13, Node.js 22, 100GB storage, checkpoint/restore.
 
 ## Installation
 
@@ -352,6 +390,7 @@ export E2B_API_KEY="..."
 export MODAL_TOKEN_ID="..."  # Or use `modal token set`
 export DAYTONA_API_KEY="..."
 export HOPX_API_KEY="hopx_live_<keyId>.<secret>"
+export SPRITES_TOKEN="..."  # Or use `sprite login` for CLI mode
 export CLOUDFLARE_SANDBOX_BASE_URL="https://your-worker.workers.dev"
 export CLOUDFLARE_API_TOKEN="..."
 ```
@@ -373,9 +412,10 @@ When you call `Sandbox.create()` or `run()`, the library checks for providers in
 
 1. **Daytona** - Looks for `DAYTONA_API_KEY`
 2. **E2B** - Looks for `E2B_API_KEY`
-3. **Hopx** - Looks for `HOPX_API_KEY`
-4. **Modal** - Looks for `~/.modal.toml` or `MODAL_TOKEN_ID`
-5. **Cloudflare** *(experimental)* - Looks for `CLOUDFLARE_SANDBOX_BASE_URL` + `CLOUDFLARE_API_TOKEN`
+3. **Sprites** - Looks for `SPRITES_TOKEN` or `sprite` CLI login
+4. **Hopx** - Looks for `HOPX_API_KEY`
+5. **Modal** - Looks for `~/.modal.toml` or `MODAL_TOKEN_ID`
+6. **Cloudflare** *(experimental)* - Looks for `CLOUDFLARE_SANDBOX_BASE_URL` + `CLOUDFLARE_API_TOKEN`
 
 **The first provider with valid credentials becomes the default.** Cloudflare requires deploying your own Worker.
 
@@ -433,6 +473,7 @@ from sandboxes.providers import (
     ModalProvider,
     DaytonaProvider,
     HopxProvider,
+    SpritesProvider,
     CloudflareProvider,
 )
 
@@ -448,6 +489,10 @@ provider = DaytonaProvider()
 # Hopx - Uses HOPX_API_KEY env var
 provider = HopxProvider()
 
+# Sprites - Uses SPRITES_TOKEN or sprite CLI login
+provider = SpritesProvider()  # SDK mode with SPRITES_TOKEN
+provider = SpritesProvider(use_cli=True)  # CLI mode with sprite login
+
 # Cloudflare - Requires base_url and token
 provider = CloudflareProvider(
     base_url="https://your-worker.workers.dev",
@@ -460,6 +505,7 @@ Each provider requires appropriate authentication:
 - **Modal**: Run `modal token set` to configure
 - **Daytona**: Set `DAYTONA_API_KEY` environment variable
 - **Hopx**: Set `HOPX_API_KEY` environment variable (format: `hopx_live_<keyId>.<secret>`)
+- **Sprites**: Set `SPRITES_TOKEN` environment variable, or run `sprite login` for CLI mode
 - **Cloudflare** *(experimental)*: Deploy the [Cloudflare sandbox Worker](https://github.com/cloudflare/sandbox-sdk) and set `CLOUDFLARE_SANDBOX_BASE_URL`, `CLOUDFLARE_API_TOKEN`, and (optionally) `CLOUDFLARE_ACCOUNT_ID`
 
 > **Cloudflare setup tips (experimental)**
@@ -471,6 +517,30 @@ Each provider requires appropriate authentication:
 > 3. Define a secret (e.g. `SANDBOX_API_TOKEN`) in Wrangler and reuse the same value for `CLOUDFLARE_API_TOKEN` locally.
 > 4. Set `CLOUDFLARE_SANDBOX_BASE_URL` to the Worker URL (e.g. `https://cf-sandbox.your-subdomain.workers.dev`).
 
+> **Sprites (Fly.io) - Great for Claude Code**
+>
+> [Sprites](https://sprites.dev) are persistent Linux sandboxes from Fly.io with unique features:
+> - **Claude Code pre-installed** (v2.0+) - No setup required
+> - **Checkpoint/restore** - Save and restore sandbox state in ~300ms
+> - **100GB persistent storage** - Files persist across sessions
+> - **1-2s startup** - Fast cold starts, instant from checkpoint
+> - **~$0.46 for 4-hour session** - Scale-to-zero billing
+>
+> ```python
+> from sandboxes.providers import SpritesProvider
+>
+> provider = SpritesProvider(use_cli=True)  # Uses sprite login
+> sandbox = await provider.create_sandbox(config)
+>
+> # Checkpoint after setup (unique to Sprites)
+> checkpoint_id = await provider.create_checkpoint(sandbox.id)
+>
+> # Later: instant restore
+> await provider.restore_checkpoint(sandbox.id, checkpoint_id)
+> ```
+>
+> See [Simon Willison's writeup](https://simonwillison.net/2026/Jan/9/sprites-dev/) for more details.
+
 ## Advanced Usage
 
 ### Multi-Provider Orchestration
@@ -478,7 +548,7 @@ Each provider requires appropriate authentication:
 ```python
 import asyncio
 from sandboxes import Manager, SandboxConfig
-from sandboxes.providers import E2BProvider, ModalProvider, DaytonaProvider, CloudflareProvider
+from sandboxes.providers import E2BProvider, ModalProvider, DaytonaProvider, SpritesProvider, CloudflareProvider
 
 async def main():
     # Initialize manager and register providers
@@ -488,6 +558,7 @@ async def main():
     manager.register_provider("modal", ModalProvider, {})
     manager.register_provider("daytona", DaytonaProvider, {})
     manager.register_provider("hopx", HopxProvider, {})
+    manager.register_provider("sprites", SpritesProvider, {"use_cli": True})
     manager.register_provider(
         "cloudflare",
         CloudflareProvider,
@@ -604,6 +675,12 @@ export DAYTONA_API_KEY="dtn_..."
 # Modal (or use modal token set)
 export MODAL_TOKEN_ID="..."
 export MODAL_TOKEN_SECRET="..."
+
+# Hopx
+export HOPX_API_KEY="hopx_live_..."
+
+# Sprites (or use `sprite login` for CLI mode)
+export SPRITES_TOKEN="..."
 
 # Cloudflare
 export CLOUDFLARE_SANDBOX_BASE_URL="https://your-worker.workers.dev"
@@ -874,4 +951,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 Built by [Cased](https://cased.com)
 
-Thanks to the teams at E2B, Modal, Daytona, and Cloudflare for their excellent sandbox platforms.
+Thanks to the teams at E2B, Modal, Daytona, Hopx, Fly.io (Sprites), and Cloudflare for their excellent sandbox platforms.

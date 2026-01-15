@@ -13,6 +13,17 @@ from .base import (
     SandboxState,
 )
 from .base import Sandbox as BaseSandbox
+
+# Claude Code integration
+from .claude import (
+    ClaudeCodeAgent,
+    ClaudeCodeConfig,
+    ClaudeCodeError,
+    ClaudeCodeResult,
+    ClaudeCodeSDK,
+    run_claude_code,
+    stream_claude_code,
+)
 from .exceptions import (
     ProviderError,
     SandboxAuthenticationError,
@@ -34,6 +45,14 @@ __all__ = [
     "Sandbox",
     "run",
     "run_many",
+    # Claude Code integration
+    "run_claude_code",
+    "stream_claude_code",
+    "ClaudeCodeAgent",
+    "ClaudeCodeSDK",
+    "ClaudeCodeConfig",
+    "ClaudeCodeResult",
+    "ClaudeCodeError",
     # Core types
     "SandboxProvider",
     "BaseSandbox",

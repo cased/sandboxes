@@ -64,15 +64,29 @@ class ModalProvider(SandboxProvider):
         """Provider name."""
         return "modal"
 
-    def _create_modal_sandbox(self, image: str, cpu: float, memory: int, timeout: int):
-        """Create Modal sandbox synchronously."""
+    def _create_modal_sandbox(self, image: str | Any, cpu: float, memory: int, timeout: int):
+        """Create Modal sandbox synchronously.
+
+        Args:
+            image: Either a string (Docker registry image) or a modal.Image object
+            cpu: CPU cores to allocate
+            memory: Memory in MB
+            timeout: Timeout in seconds
+        """
         # Modal sandboxes require an App context
         # Use a persistent app that creates itself if missing
         app = modal.App.lookup("sandboxes-provider", create_if_missing=True)
 
+        # Handle both string images and modal.Image objects
+        if isinstance(image, str):
+            modal_image = modal.Image.from_registry(image)
+        else:
+            # Assume it's already a modal.Image
+            modal_image = image
+
         # Create Modal sandbox with specified resources
         sandbox = ModalSandbox.create(
-            app=app, image=modal.Image.from_registry(image), cpu=cpu, memory=memory, timeout=timeout
+            app=app, image=modal_image, cpu=cpu, memory=memory, timeout=timeout
         )
         return sandbox
 
@@ -121,7 +135,7 @@ class ModalProvider(SandboxProvider):
                 self._executor, self._create_modal_sandbox, image, cpu, memory, timeout
             )
 
-            # Store metadata
+            # Store metadata - include env_vars for use in each command
             metadata = {
                 "modal_sandbox": modal_sandbox,
                 "labels": config.labels or {},
@@ -131,17 +145,13 @@ class ModalProvider(SandboxProvider):
                 "image": image,
                 "cpu": cpu,
                 "memory": memory,
+                "env_vars": config.env_vars or {},  # Store for each command
             }
 
             async with self._lock:
                 self._sandboxes[modal_sandbox.object_id] = metadata
 
             logger.info(f"Created Modal sandbox {modal_sandbox.object_id}")
-
-            # Set environment variables if provided
-            if config.env_vars:
-                for key, value in config.env_vars.items():
-                    await self.execute_command(modal_sandbox.object_id, f"export {key}='{value}'")
 
             # Run setup commands
             if config.setup_commands:
@@ -256,9 +266,14 @@ class ModalProvider(SandboxProvider):
             modal_sandbox = metadata["modal_sandbox"]
             metadata["last_accessed"] = time.time()
 
-            # Prepare command with environment variables
+            # Combine stored env_vars with any passed env_vars
+            all_env_vars = dict(metadata.get("env_vars", {}))
             if env_vars:
-                env_setup = " && ".join([f"export {k}='{v}'" for k, v in env_vars.items()])
+                all_env_vars.update(env_vars)
+
+            # Prepare command with environment variables
+            if all_env_vars:
+                env_setup = " && ".join([f"export {k}='{v}'" for k, v in all_env_vars.items()])
                 command = f"{env_setup} && {command}"
 
             # Execute command in thread pool
@@ -272,12 +287,27 @@ class ModalProvider(SandboxProvider):
                 lambda: modal_sandbox.exec("sh", "-c", command, timeout=timeout or self.timeout),
             )
 
-            # Get output
-            stdout = process.stdout.read() if process.stdout else ""
-            stderr = process.stderr.read() if process.stderr else ""
+            # Wait for completion first - Modal SDK may require this before reading
+            # wait() might be sync or async
+            wait_result = process.wait()
+            exit_code = await wait_result if asyncio.iscoroutine(wait_result) else wait_result
 
-            # Wait for completion and get exit code
-            exit_code = await loop.run_in_executor(self._executor, lambda: process.wait())
+            # Get output - Modal's read() may be sync or async depending on version
+            if process.stdout:
+                stdout_result = process.stdout.read()
+                stdout = (
+                    await stdout_result if asyncio.iscoroutine(stdout_result) else stdout_result
+                )
+            else:
+                stdout = ""
+
+            if process.stderr:
+                stderr_result = process.stderr.read()
+                stderr = (
+                    await stderr_result if asyncio.iscoroutine(stderr_result) else stderr_result
+                )
+            else:
+                stderr = ""
 
             duration_ms = int((time.time() - start_time) * 1000)
 

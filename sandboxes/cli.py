@@ -15,11 +15,13 @@ def get_provider(name: str):
     from sandboxes.providers.daytona import DaytonaProvider
     from sandboxes.providers.e2b import E2BProvider
     from sandboxes.providers.modal import ModalProvider
+    from sandboxes.providers.sprites import SpritesProvider
 
     providers = {
         "e2b": E2BProvider,
         "modal": ModalProvider,
         "daytona": DaytonaProvider,
+        "sprites": SpritesProvider,
         "cloudflare": CloudflareProvider,
     }
 
@@ -420,10 +422,18 @@ def providers():
     click.echo("\nAvailable Providers")
     click.echo("=" * 50)
 
+    import shutil
+
     providers = [
         ("e2b", "E2B_API_KEY", "E2B cloud sandboxes", False),
         ("modal", "~/.modal.toml", "Modal serverless containers", False),
         ("daytona", "DAYTONA_API_KEY", "Daytona development environments", False),
+        (
+            "sprites",
+            "SPRITES_TOKEN or sprite CLI",
+            "Fly.io Sprites (Claude Code pre-installed)",
+            False,
+        ),
         (
             "cloudflare",
             "CLOUDFLARE_API_TOKEN",
@@ -440,6 +450,8 @@ def providers():
             configured = bool(os.getenv("E2B_API_KEY"))
         elif name == "daytona":
             configured = bool(os.getenv("DAYTONA_API_KEY"))
+        elif name == "sprites":
+            configured = bool(os.getenv("SPRITES_TOKEN")) or shutil.which("sprite") is not None
         elif name == "cloudflare":
             configured = bool(os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_API_KEY"))
         else:
@@ -458,6 +470,7 @@ def providers():
     click.echo("  E2B: export E2B_API_KEY=your_key")
     click.echo("  Modal: modal token set")
     click.echo("  Daytona: export DAYTONA_API_KEY=your_key")
+    click.echo("  Sprites: sprite login (or export SPRITES_TOKEN=your_token)")
     click.echo(
         "  Cloudflare (experimental): Deploy Worker from https://github.com/cloudflare/sandbox-sdk"
     )
