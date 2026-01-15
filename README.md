@@ -35,7 +35,7 @@ Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in a secure sa
 sandboxes claude
 ```
 
-That's it. You get an interactive Claude Code session in an isolated environment with Python 3.13, Node.js 22, and 100GB of storage.
+That's it. You get an interactive Claude Code session in an isolated, cloud environment.
 
 ### Setup (Sprites - recommended)
 
