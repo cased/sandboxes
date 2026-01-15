@@ -77,6 +77,9 @@ sandboxes claude -n myproject
 
 # List your sandboxes
 sandboxes claude --list
+
+# Or just get a raw shell (no Claude Code)
+sandboxes shell -n mydev --keep
 ```
 
 ### Why Sandboxes?
