@@ -35,8 +35,13 @@ print(result.output)
 ### CLI
 
 ```bash
-# Run Claude Code in a sandbox from your terminal
+# Non-interactive: run a prompt and get output
 sandboxes run "claude --print 'Write a hello world in Python'" -p sprites
+
+# Interactive: open a shell and run claude interactively
+sandboxes shell
+# Then inside the sandbox:
+# $ claude
 ```
 
 ### Recommended Provider: Sprites

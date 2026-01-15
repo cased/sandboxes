@@ -476,5 +476,81 @@ def providers():
     )
 
 
+@cli.command()
+@click.option("-p", "--provider", default="sprites", help="Provider (default: sprites)")
+@click.option("-n", "--name", default=None, help="Sandbox name (reuse existing)")
+@click.option("-l", "--label", multiple=True, help="Labels (key=value)")
+@click.option("--keep", is_flag=True, help="Keep sandbox after exit")
+def shell(provider: str, name: str | None, label: tuple, keep: bool):
+    """Open an interactive shell in a sandbox.
+
+    Great for running Claude Code interactively:
+
+        sandboxes shell -p sprites
+        # Then inside: claude
+
+    Or with a specific sandbox name for reuse:
+
+        sandboxes shell -p sprites -n my-dev --keep
+    """
+    import subprocess
+
+    # Currently only sprites supports interactive console
+    if provider != "sprites":
+        click.echo(f"❌ Interactive shell only supported for sprites provider", err=True)
+        click.echo("Hint: Use 'sandboxes shell -p sprites'", err=True)
+        sys.exit(1)
+
+    import shutil
+
+    if not shutil.which("sprite"):
+        click.echo("❌ sprite CLI not found. Install with:", err=True)
+        click.echo("   curl https://sprites.dev/install.sh | bash", err=True)
+        sys.exit(1)
+
+    # Parse labels
+    labels = {}
+    for l in label:
+        if "=" in l:
+            k, v = l.split("=", 1)
+            labels[k] = v
+
+    # Generate or use provided name
+    if not name:
+        import uuid
+
+        name = f"sandbox-{uuid.uuid4().hex[:8]}"
+        click.echo(f"Creating sandbox: {name}")
+
+        # Create the sprite
+        result = subprocess.run(
+            ["sprite", "create", name], capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            click.echo(f"❌ Failed to create sandbox: {result.stderr}", err=True)
+            sys.exit(1)
+        click.echo(f"✓ Created {name}")
+    else:
+        click.echo(f"Using sandbox: {name}")
+
+    click.echo(f"\n🚀 Opening interactive shell...")
+    click.echo("   Run 'claude' for interactive Claude Code")
+    click.echo("   Press Ctrl+D to exit\n")
+
+    try:
+        # Open interactive console - this replaces the current process
+        subprocess.run(["sprite", "console", "-s", name])
+    finally:
+        if not keep:
+            click.echo(f"\n🗑️  Destroying sandbox {name}...")
+            subprocess.run(
+                ["sprite", "destroy", "-s", name, "-force"],
+                capture_output=True,
+            )
+            click.echo("✓ Destroyed")
+        else:
+            click.echo(f"\n💡 Sandbox kept. Reconnect with: sandboxes shell -p sprites -n {name}")
+
+
 if __name__ == "__main__":
     cli()
