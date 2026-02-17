@@ -8,7 +8,14 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
-from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
+from ..base import (
+    ExecutionResult,
+    ProviderCapabilities,
+    Sandbox,
+    SandboxConfig,
+    SandboxProvider,
+    SandboxState,
+)
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
 from ..security import validate_download_path, validate_upload_path
 
@@ -26,6 +33,12 @@ except ImportError:
 
 class E2BProvider(SandboxProvider):
     """E2B sandbox provider using the official SDK."""
+
+    CAPABILITIES = ProviderCapabilities(
+        persistent=True,
+        streaming=True,
+        file_upload=True,
+    )
 
     def __init__(self, api_key: str | None = None, **config):
         """

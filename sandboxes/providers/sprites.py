@@ -11,7 +11,14 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
-from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
+from ..base import (
+    ExecutionResult,
+    ProviderCapabilities,
+    Sandbox,
+    SandboxConfig,
+    SandboxProvider,
+    SandboxState,
+)
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -50,6 +57,12 @@ class SpritesProvider(SandboxProvider):
     - SDK mode: Uses sprites-py with SPRITES_TOKEN
     - CLI mode: Uses sprite CLI with existing login (sprite login)
     """
+
+    CAPABILITIES = ProviderCapabilities(
+        persistent=True,
+        streaming=True,
+        interactive_shell=True,
+    )
 
     def __init__(self, token: str | None = None, use_cli: bool = False, **config):
         """Initialize Sprites provider.

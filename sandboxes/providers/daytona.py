@@ -5,7 +5,14 @@ import math
 import os
 from typing import Any
 
-from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
+from ..base import (
+    ExecutionResult,
+    ProviderCapabilities,
+    Sandbox,
+    SandboxConfig,
+    SandboxProvider,
+    SandboxState,
+)
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
 from ..security import validate_download_path, validate_upload_path
 
@@ -33,6 +40,12 @@ except ImportError:
 
 class DaytonaProvider(SandboxProvider):
     """Daytona sandbox provider implementation."""
+
+    CAPABILITIES = ProviderCapabilities(
+        persistent=True,
+        snapshot=True,
+        file_upload=True,
+    )
 
     def __init__(self, api_key: str | None = None, **config):
         """Initialize Daytona provider."""
