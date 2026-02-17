@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """CLI for cased-sandboxes."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import os
@@ -9,23 +11,68 @@ import sys
 import click
 
 from . import __version__
+from .base import ProviderCapabilities
+
+
+def _provider_classes():
+    """Return provider name to provider class mapping."""
+    providers: dict[str, type] = {}
+
+    try:
+        from sandboxes.providers.e2b import E2BProvider
+
+        providers["e2b"] = E2BProvider
+    except ImportError:
+        pass
+
+    try:
+        from sandboxes.providers.modal import ModalProvider
+
+        providers["modal"] = ModalProvider
+    except ImportError:
+        pass
+
+    try:
+        from sandboxes.providers.daytona import DaytonaProvider
+
+        providers["daytona"] = DaytonaProvider
+    except ImportError:
+        pass
+
+    try:
+        from sandboxes.providers.vercel import VercelProvider
+
+        providers["vercel"] = VercelProvider
+    except ImportError:
+        pass
+
+    try:
+        from sandboxes.providers.hopx import HopxProvider
+
+        providers["hopx"] = HopxProvider
+    except ImportError:
+        pass
+
+    try:
+        from sandboxes.providers.sprites import SpritesProvider
+
+        providers["sprites"] = SpritesProvider
+    except ImportError:
+        pass
+
+    try:
+        from sandboxes.providers.cloudflare import CloudflareProvider
+
+        providers["cloudflare"] = CloudflareProvider
+    except ImportError:
+        pass
+
+    return providers
 
 
 def get_provider(name: str):
     """Get a provider instance by name."""
-    from sandboxes.providers.cloudflare import CloudflareProvider
-    from sandboxes.providers.daytona import DaytonaProvider
-    from sandboxes.providers.e2b import E2BProvider
-    from sandboxes.providers.modal import ModalProvider
-    from sandboxes.providers.sprites import SpritesProvider
-
-    providers = {
-        "e2b": E2BProvider,
-        "modal": ModalProvider,
-        "daytona": DaytonaProvider,
-        "sprites": SpritesProvider,
-        "cloudflare": CloudflareProvider,
-    }
+    providers = _provider_classes()
 
     if name not in providers:
         click.echo(f"❌ Unknown provider: {name}", err=True)
@@ -33,7 +80,24 @@ def get_provider(name: str):
         sys.exit(1)
 
     try:
-        return providers[name]()
+        provider_class = providers[name]
+        if name == "cloudflare":
+            return provider_class(
+                base_url=os.getenv("CLOUDFLARE_SANDBOX_BASE_URL", ""),
+                api_token=os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_API_KEY"),
+                account_id=os.getenv("CLOUDFLARE_ACCOUNT_ID"),
+            )
+        if name == "vercel":
+            return provider_class(
+                token=(
+                    os.getenv("VERCEL_TOKEN")
+                    or os.getenv("VERCEL_API_TOKEN")
+                    or os.getenv("VERCEL_ACCESS_TOKEN")
+                ),
+                project_id=os.getenv("VERCEL_PROJECT_ID"),
+                team_id=os.getenv("VERCEL_TEAM_ID"),
+            )
+        return provider_class()
     except Exception as e:
         click.echo(f"❌ Failed to initialize {name}: {e}", err=True)
         sys.exit(1)
@@ -50,7 +114,12 @@ def cli():
 @click.argument("command", required=False)
 @click.option("--file", "-f", type=click.Path(exists=True), help="Execute code from a file")
 @click.option("--language", "--lang", help="Language/runtime (python, node, go, etc.)")
-@click.option("--provider", "-p", default="daytona", help="Provider to use (daytona, e2b, modal)")
+@click.option(
+    "--provider",
+    "-p",
+    default="daytona",
+    help="Provider to use (e.g. daytona, e2b, modal, vercel)",
+)
 @click.option("--image", "-i", help="Docker image or template")
 @click.option("--env", "-e", multiple=True, help="Environment variables (KEY=VALUE)")
 @click.option("--label", "-l", multiple=True, help="Labels (KEY=VALUE)")
@@ -303,7 +372,7 @@ def list(provider, label, output_json):
 
 @cli.command()
 @click.argument("sandbox_id")
-@click.option("--provider", "-p", required=True, help="Provider (e2b, modal, daytona)")
+@click.option("--provider", "-p", required=True, help="Provider name (e.g. e2b, modal, daytona)")
 def destroy(sandbox_id, provider):
     """Destroy a sandbox.
 
@@ -323,7 +392,7 @@ def destroy(sandbox_id, provider):
 @cli.command()
 @click.argument("sandbox_id")
 @click.argument("command")
-@click.option("--provider", "-p", required=True, help="Provider (e2b, modal, daytona)")
+@click.option("--provider", "-p", required=True, help="Provider name (e.g. e2b, modal, daytona)")
 @click.option("--env", "-e", multiple=True, help="Environment variables (KEY=VALUE)")
 def exec(sandbox_id, command, provider, env):
     """Execute a command in an existing sandbox.
@@ -419,17 +488,22 @@ def test(provider):
 
 
 @cli.command()
-def providers():
+@click.option("--capabilities/--no-capabilities", default=False, help="Show capability matrix")
+def providers(capabilities):
     """List available providers and their status."""
     click.echo("\nAvailable Providers")
     click.echo("=" * 50)
 
     import shutil
 
+    provider_classes = _provider_classes()
+
     providers = [
         ("e2b", "E2B_API_KEY", "E2B cloud sandboxes", False),
         ("modal", "~/.modal.toml", "Modal serverless containers", False),
         ("daytona", "DAYTONA_API_KEY", "Daytona development environments", False),
+        ("vercel", "VERCEL_TOKEN + PROJECT_ID + TEAM_ID", "Vercel Sandboxes", False),
+        ("hopx", "HOPX_API_KEY", "Hopx secure cloud sandboxes", False),
         (
             "sprites",
             "SPRITES_TOKEN or sprite CLI",
@@ -452,10 +526,26 @@ def providers():
             configured = bool(os.getenv("E2B_API_KEY"))
         elif name == "daytona":
             configured = bool(os.getenv("DAYTONA_API_KEY"))
+        elif name == "vercel":
+            configured = bool(
+                (
+                    os.getenv("VERCEL_TOKEN")
+                    or os.getenv("VERCEL_API_TOKEN")
+                    or os.getenv("VERCEL_ACCESS_TOKEN")
+                    or os.getenv("VERCEL_OIDC_TOKEN")
+                )
+                and os.getenv("VERCEL_PROJECT_ID")
+                and os.getenv("VERCEL_TEAM_ID")
+            )
+        elif name == "hopx":
+            configured = bool(os.getenv("HOPX_API_KEY"))
         elif name == "sprites":
             configured = bool(os.getenv("SPRITES_TOKEN")) or shutil.which("sprite") is not None
         elif name == "cloudflare":
-            configured = bool(os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_API_KEY"))
+            configured = bool(
+                (os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_API_KEY"))
+                and os.getenv("CLOUDFLARE_SANDBOX_BASE_URL")
+            )
         else:
             configured = False
 
@@ -468,10 +558,56 @@ def providers():
         if is_experimental:
             click.echo("  Note: Requires self-hosted Worker deployment")
 
+    if capabilities:
+        click.echo("\nCapability Matrix")
+        click.echo("=" * 50)
+
+        headers = [
+            "Provider",
+            "Persistent",
+            "Snapshot",
+            "Streaming",
+            "File Upload",
+            "Interactive Shell",
+            "GPU",
+        ]
+
+        rows: list[list[str]] = []
+        for name, _, _, _ in providers:
+            provider_class = provider_classes.get(name)
+            provider_capabilities = (
+                provider_class.get_capabilities() if provider_class else ProviderCapabilities()
+            )
+            rows.append(
+                [
+                    name,
+                    "Y" if provider_capabilities.persistent else "-",
+                    "Y" if provider_capabilities.snapshot else "-",
+                    "Y" if provider_capabilities.streaming else "-",
+                    "Y" if provider_capabilities.file_upload else "-",
+                    "Y" if provider_capabilities.interactive_shell else "-",
+                    "Y" if provider_capabilities.gpu else "-",
+                ]
+            )
+
+        col_widths = [
+            max(len(headers[i]), *(len(row[i]) for row in rows)) for i in range(len(headers))
+        ]
+
+        def format_row(row: list[str]) -> str:
+            return "  " + " | ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row))
+
+        click.echo(format_row(headers))
+        click.echo("  " + "-+-".join("-" * width for width in col_widths))
+        for row in rows:
+            click.echo(format_row(row))
+
     click.echo("\n💡 To configure a provider:")
     click.echo("  E2B: export E2B_API_KEY=your_key")
     click.echo("  Modal: modal token set")
     click.echo("  Daytona: export DAYTONA_API_KEY=your_key")
+    click.echo("  Vercel: export VERCEL_TOKEN=... VERCEL_PROJECT_ID=... VERCEL_TEAM_ID=...")
+    click.echo("  Hopx: export HOPX_API_KEY=hopx_live_<keyId>.<secret>")
     click.echo("  Sprites: sprite login (or export SPRITES_TOKEN=your_token)")
     click.echo(
         "  Cloudflare (experimental): Deploy Worker from https://github.com/cloudflare/sandbox-sdk"
