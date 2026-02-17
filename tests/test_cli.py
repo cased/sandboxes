@@ -191,6 +191,12 @@ class TestCLICommands:
                     return "https://example.workers.dev"
                 if key == "HOPX_API_KEY":
                     return "hopx_live_key.secret"
+                if key == "VERCEL_TOKEN":
+                    return "vercel_token"
+                if key == "VERCEL_PROJECT_ID":
+                    return "project_123"
+                if key == "VERCEL_TEAM_ID":
+                    return "team_123"
                 if key == "DAYTONA_API_KEY":
                     return None
                 return None
@@ -206,6 +212,7 @@ class TestCLICommands:
             assert "e2b" in result.output
             assert "modal" in result.output
             assert "daytona" in result.output
+            assert "vercel" in result.output
             assert "hopx" in result.output
             assert "cloudflare" in result.output
             assert "Configured" in result.output
@@ -224,6 +231,7 @@ class TestCLICommands:
             assert "Persistent" in result.output
             assert "Interactive Shell" in result.output
             assert "hopx" in result.output
+            assert "vercel" in result.output
 
 
 class TestCLIDepsFlag:
