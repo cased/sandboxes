@@ -482,7 +482,9 @@ class TestCloudflareCommandSanitization:
         download_path = tmp_path / "download.txt"
 
         upload_success = await provider.upload_file("quote-test", str(upload_path), remote_path)
-        download_success = await provider.download_file("quote-test", remote_path, str(download_path))
+        download_success = await provider.download_file(
+            "quote-test", remote_path, str(download_path)
+        )
 
         assert upload_success is True
         assert download_success is True

@@ -265,7 +265,9 @@ class ModalProvider(SandboxProvider):
 
             # Modal's exec returns a process object
             # Use 'sh' instead of 'bash' for alpine compatibility.
-            process = await modal_sandbox.exec.aio("sh", "-c", command, timeout=timeout or self.timeout)
+            process = await modal_sandbox.exec.aio(
+                "sh", "-c", command, timeout=timeout or self.timeout
+            )
 
             # Wait for completion before reading process output.
             exit_code = await process.wait.aio()

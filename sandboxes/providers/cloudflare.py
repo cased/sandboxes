@@ -303,7 +303,9 @@ class CloudflareProvider(SandboxProvider):
             return True
         except (SandboxError, SandboxNotFoundError):
             # Fallback: use cat and base64 encoding to read file
-            result = await self.execute_command(sandbox_id, f"cat {shlex.quote(remote_path)} | base64")
+            result = await self.execute_command(
+                sandbox_id, f"cat {shlex.quote(remote_path)} | base64"
+            )
             if not result.success:
                 return False
 
