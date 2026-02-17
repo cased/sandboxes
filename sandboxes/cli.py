@@ -8,6 +8,8 @@ import sys
 
 import click
 
+from . import __version__
+
 
 def get_provider(name: str):
     """Get a provider instance by name."""
@@ -38,7 +40,7 @@ def get_provider(name: str):
 
 
 @click.group()
-@click.version_option(version="0.2.3", prog_name="cased-sandboxes")
+@click.version_option(version=__version__, prog_name="cased-sandboxes")
 def cli():
     """Universal AI code execution sandboxes."""
     pass

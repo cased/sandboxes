@@ -13,6 +13,7 @@ Features:
 Based on ai-sandbox-benchmark (Apache 2.0 License)
 https://github.com/nibzard/ai-sandbox-benchmark
 """
+
 import asyncio
 import os
 import sys
@@ -51,7 +52,8 @@ TESTS = {
     },
     "prime_calculation": {
         "name": "Prime Calculation",
-        "command": """python3 -c "
+        "command": (
+            """python3 -c "
 def is_prime(n):
     if n < 2: return False
     for i in range(2, int(n**0.5) + 1):
@@ -61,13 +63,15 @@ def is_prime(n):
 primes = [n for n in range(2, 1000) if is_prime(n)]
 print(f'Found {len(primes)} primes')
 "
-""",
+"""
+        ),
         "runs": 5,
         "description": "CPU-bound computation",
     },
     "file_io": {
         "name": "File I/O (1000 files)",
-        "command": """python3 -c "
+        "command": (
+            """python3 -c "
 import os
 # Write 1000 small files
 for i in range(1000):
@@ -82,25 +86,30 @@ for i in range(1000):
 
 print(f'Processed {total} bytes')
 "
-""",
+"""
+        ),
         "runs": 3,
         "description": "I/O performance test",
     },
     "package_install": {
         "name": "pip install requests",
-        "command": "pip install -q requests && python3 -c 'import requests; print(f\"requests {requests.__version__}\")'",
+        "command": (
+            "pip install -q requests && python3 -c 'import requests; print(f\"requests {requests.__version__}\")'"
+        ),
         "runs": 2,
         "description": "Package installation speed (requests already installed in standard image)",
     },
     "numpy_fft": {
         "name": "NumPy FFT",
-        "command": """python3 -c "
+        "command": (
+            """python3 -c "
 import numpy as np
 x = np.random.random(10000)
 result = np.fft.fft(x)
 print(f'FFT: {len(result)} points')
 "
-""",
+"""
+        ),
         "runs": 3,
         "description": "Numerical computation with pre-installed packages",
     },

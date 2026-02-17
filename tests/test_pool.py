@@ -306,6 +306,51 @@ class TestSandboxPool:
         assert len(unhealthy) == 1
         assert unhealthy[0] == sandbox_id
 
+    @pytest.mark.asyncio
+    async def test_eager_strategy_prewarms_idle_sandboxes(self):
+        """Eager strategy should keep the configured minimum number of idle sandboxes."""
+        pool = SandboxPool(
+            PoolConfig(
+                min_idle=2,
+                max_total=5,
+                max_idle=5,
+                strategy=PoolStrategy.EAGER,
+                auto_cleanup=False,
+            )
+        )
+        provider = MockProvider()
+        config = SandboxConfig(labels={"test": "eager"})
+
+        sandbox = await pool.acquire(provider, config)
+        assert sandbox is not None
+
+        stats = pool.get_stats()
+        assert stats["total"] >= 2
+        assert stats["idle"] >= 1
+        assert stats["busy"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_start_with_template_prewarms_idle(self):
+        """start(provider, config) should pre-create idle sandboxes for eager pools."""
+        pool = SandboxPool(
+            PoolConfig(
+                min_idle=2,
+                max_total=5,
+                max_idle=5,
+                strategy=PoolStrategy.EAGER,
+                auto_cleanup=False,
+            )
+        )
+        provider = MockProvider()
+        config = SandboxConfig(labels={"test": "start-eager"})
+
+        await pool.start(provider, config)
+        stats = pool.get_stats()
+
+        assert stats["idle"] == 2
+        assert stats["busy"] == 0
+        assert stats["total"] == 2
+
 
 class TestConnectionPool:
     """Test the ConnectionPool class specifically."""

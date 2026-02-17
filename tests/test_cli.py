@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from sandboxes import ExecutionResult, SandboxConfig
+from sandboxes import ExecutionResult, SandboxConfig, __version__
 from sandboxes.base import Sandbox, SandboxState
 from sandboxes.cli import cli, get_provider
 
@@ -65,7 +65,7 @@ class TestCLICommands:
         """Test CLI version command."""
         result = self.runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
-        assert "0.2.3" in result.output
+        assert __version__ in result.output
 
     @patch("sandboxes.cli.asyncio.run")
     def test_run_command_basic(self, mock_async_run):

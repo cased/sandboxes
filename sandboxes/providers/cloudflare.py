@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
+import shlex
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import suppress
@@ -17,6 +20,7 @@ from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
 from ..security import validate_download_path, validate_upload_path
 
 _DEFAULT_TIMEOUT = 30.0
+_ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class CloudflareProvider(SandboxProvider):
@@ -47,6 +51,7 @@ class CloudflareProvider(SandboxProvider):
         self.account_id = account_id
         self._transport = transport
         self._user_agent = "cased-sandboxes/0.4.2"
+        self._last_accessed: dict[str, float] = {}
 
     @property
     def name(self) -> str:
@@ -73,6 +78,7 @@ class CloudflareProvider(SandboxProvider):
                 "created_via": "cloudflare",
             },
         )
+        self._touch_session(session_id)
         return sandbox
 
     async def get_sandbox(self, sandbox_id: str) -> Sandbox | None:
@@ -133,6 +139,7 @@ class CloudflareProvider(SandboxProvider):
             )
         except SandboxNotFoundError:
             return False
+        self._last_accessed.pop(sandbox_id, None)
         return True
 
     async def stream_execution(
@@ -264,10 +271,11 @@ class CloudflareProvider(SandboxProvider):
             # Create directory if needed
             dir_path = "/".join(remote_path.split("/")[:-1])
             if dir_path:
-                await self.execute_command(sandbox_id, f"mkdir -p {dir_path}")
+                await self.execute_command(sandbox_id, f"mkdir -p {shlex.quote(dir_path)}")
             # Write file using base64 decode
             result = await self.execute_command(
-                sandbox_id, f"echo '{encoded}' | base64 -d > {remote_path}"
+                sandbox_id,
+                f"echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(remote_path)}",
             )
             return result.success
 
@@ -295,7 +303,9 @@ class CloudflareProvider(SandboxProvider):
             return True
         except (SandboxError, SandboxNotFoundError):
             # Fallback: use cat and base64 encoding to read file
-            result = await self.execute_command(sandbox_id, f"cat {remote_path} | base64")
+            result = await self.execute_command(
+                sandbox_id, f"cat {shlex.quote(remote_path)} | base64"
+            )
             if not result.success:
                 return False
 
@@ -315,11 +325,14 @@ class CloudflareProvider(SandboxProvider):
         cleans up our tracking. Actual sandbox cleanup happens automatically.
         """
         sandboxes = await self.list_sandboxes()
-        asyncio.get_event_loop().time()
+        now = time.time()
 
         for sandbox in sandboxes:
-            # Since we don't track last access time in the Worker,
-            # we'll clean up all sandboxes as a precaution
+            last_accessed = self._last_accessed.get(sandbox.id)
+            if last_accessed is None:
+                continue
+            if now - last_accessed <= idle_timeout:
+                continue
             with suppress(SandboxNotFoundError):
                 await self.destroy_sandbox(sandbox.id)
 
@@ -360,13 +373,28 @@ class CloudflareProvider(SandboxProvider):
     ) -> str:
         if not env_vars:
             return command
-        exports = " && ".join([f"export {key}='{value}'" for key, value in env_vars.items()])
+        exports = " && ".join(
+            [
+                f"export {CloudflareProvider._validate_env_var_name(key)}={shlex.quote(str(value))}"
+                for key, value in env_vars.items()
+            ]
+        )
         return f"{exports} && {command}"
+
+    @staticmethod
+    def _validate_env_var_name(key: str) -> str:
+        if not _ENV_VAR_NAME_RE.match(key):
+            raise SandboxError(f"Invalid environment variable name: {key}")
+        return key
 
     async def _ensure_session_exists(self, sandbox_id: str) -> None:
         sandbox = await self.get_sandbox(sandbox_id)
         if not sandbox:
             raise SandboxNotFoundError(f"Session {sandbox_id} not found")
+        self._touch_session(sandbox_id)
+
+    def _touch_session(self, sandbox_id: str) -> None:
+        self._last_accessed[sandbox_id] = time.time()
 
     async def _request(
         self,
