@@ -347,6 +347,7 @@ sandboxes destroy sb-abc123 -p e2b
 
 ```bash
 sandboxes providers
+sandboxes providers --capabilities
 ```
 
 #### `test` - Test Provider Connectivity

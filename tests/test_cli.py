@@ -176,19 +176,28 @@ class TestCLICommands:
 
     def test_providers_command(self):
         """Test providers command."""
-        with patch("os.getenv") as mock_getenv, patch("os.path.exists") as mock_exists:
+        with (
+            patch("os.getenv") as mock_getenv,
+            patch("os.path.exists") as mock_exists,
+            patch("shutil.which") as mock_which,
+        ):
 
             def getenv_side_effect(key: str) -> str | None:
                 if key == "E2B_API_KEY":
                     return "test_key"
                 if key in {"CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_KEY"}:
                     return "cf_token"
+                if key == "CLOUDFLARE_SANDBOX_BASE_URL":
+                    return "https://example.workers.dev"
+                if key == "HOPX_API_KEY":
+                    return "hopx_live_key.secret"
                 if key == "DAYTONA_API_KEY":
                     return None
                 return None
 
             mock_getenv.side_effect = getenv_side_effect
             mock_exists.return_value = True  # Modal config exists
+            mock_which.return_value = "/usr/local/bin/sprite"
 
             result = self.runner.invoke(cli, ["providers"])
 
@@ -197,8 +206,24 @@ class TestCLICommands:
             assert "e2b" in result.output
             assert "modal" in result.output
             assert "daytona" in result.output
+            assert "hopx" in result.output
             assert "cloudflare" in result.output
             assert "Configured" in result.output
+
+    def test_providers_command_with_capabilities(self):
+        """Test providers command with capability matrix."""
+        with (
+            patch("os.getenv", return_value=None),
+            patch("os.path.exists", return_value=False),
+            patch("shutil.which", return_value=None),
+        ):
+            result = self.runner.invoke(cli, ["providers", "--capabilities"])
+
+            assert result.exit_code == 0
+            assert "Capability Matrix" in result.output
+            assert "Persistent" in result.output
+            assert "Interactive Shell" in result.output
+            assert "hopx" in result.output
 
 
 class TestCLIDepsFlag:

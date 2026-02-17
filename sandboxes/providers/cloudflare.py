@@ -15,7 +15,14 @@ from typing import Any
 
 import httpx
 
-from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
+from ..base import (
+    ExecutionResult,
+    ProviderCapabilities,
+    Sandbox,
+    SandboxConfig,
+    SandboxProvider,
+    SandboxState,
+)
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
 from ..security import validate_download_path, validate_upload_path
 
@@ -25,6 +32,12 @@ _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 class CloudflareProvider(SandboxProvider):
     """Interact with a Cloudflare Sandbox Worker deployment via HTTP API."""
+
+    CAPABILITIES = ProviderCapabilities(
+        persistent=True,
+        streaming=True,
+        file_upload=True,
+    )
 
     def __init__(
         self,

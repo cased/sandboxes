@@ -6,6 +6,7 @@ import pytest
 
 from sandboxes.base import (
     ExecutionResult,
+    ProviderCapabilities,
     Sandbox,
     SandboxConfig,
     SandboxProvider,
@@ -136,6 +137,33 @@ class TestSandbox:
 @pytest.mark.unit
 class TestSandboxProvider:
     """Test SandboxProvider abstract base class."""
+
+    def test_default_capabilities(self):
+        """Test provider default capabilities contract."""
+
+        class MockProvider(SandboxProvider):
+            @property
+            def name(self):
+                return "mock"
+
+            async def create_sandbox(self, config):
+                pass
+
+            async def get_sandbox(self, sandbox_id):
+                pass
+
+            async def list_sandboxes(self, labels=None):
+                return []
+
+            async def execute_command(self, sandbox_id, command, timeout=None, env_vars=None):
+                pass
+
+            async def destroy_sandbox(self, sandbox_id):
+                pass
+
+        caps = MockProvider.get_capabilities()
+        assert caps == ProviderCapabilities()
+        assert MockProvider().capabilities.as_dict()["persistent"] is False
 
     @pytest.mark.asyncio
     async def test_default_find_sandbox(self):

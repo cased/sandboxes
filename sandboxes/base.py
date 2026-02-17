@@ -92,12 +92,40 @@ class Sandbox:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    """Feature flags exposed by a provider."""
+
+    persistent: bool = False
+    snapshot: bool = False
+    streaming: bool = False
+    file_upload: bool = False
+    interactive_shell: bool = False
+    gpu: bool = False
+
+    def as_dict(self) -> dict[str, bool]:
+        """Return capabilities as a plain dictionary."""
+        return asdict(self)
+
+
 class SandboxProvider(ABC):
     """Abstract base class for sandbox providers."""
+
+    CAPABILITIES = ProviderCapabilities()
 
     def __init__(self, **config):
         """Initialize provider with configuration."""
         self.config = config
+
+    @classmethod
+    def get_capabilities(cls) -> ProviderCapabilities:
+        """Return static capabilities for this provider class."""
+        return cls.CAPABILITIES
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        """Return capabilities for this provider instance."""
+        return self.get_capabilities()
 
     @property
     @abstractmethod
