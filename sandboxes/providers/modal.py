@@ -7,7 +7,14 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 
-from ..base import ExecutionResult, Sandbox, SandboxConfig, SandboxProvider, SandboxState
+from ..base import (
+    ExecutionResult,
+    ProviderCapabilities,
+    Sandbox,
+    SandboxConfig,
+    SandboxProvider,
+    SandboxState,
+)
 from ..exceptions import ProviderError, SandboxError, SandboxNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -26,6 +33,11 @@ except ImportError:
 
 class ModalProvider(SandboxProvider):
     """Modal sandbox provider implementation."""
+
+    CAPABILITIES = ProviderCapabilities(
+        persistent=True,
+        streaming=True,
+    )
 
     def __init__(self, **config):
         """Initialize Modal provider.

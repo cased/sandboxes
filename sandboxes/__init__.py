@@ -8,6 +8,7 @@ __version__ = "0.4.2"
 
 from .base import (
     ExecutionResult,
+    ProviderCapabilities,
     SandboxConfig,
     SandboxProvider,
     SandboxState,
@@ -40,6 +41,7 @@ __all__ = [
     "SandboxConfig",
     "ExecutionResult",
     "SandboxState",
+    "ProviderCapabilities",
     # Manager
     "SandboxManager",
     "Manager",  # Alias
