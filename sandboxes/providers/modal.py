@@ -4,7 +4,6 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
 
@@ -48,11 +47,6 @@ class ModalProvider(SandboxProvider):
         self.default_cpu = config.get("cpu", 2.0)
         self.default_memory = config.get("memory", 2048)
         self.timeout = config.get("timeout", 300)
-        self.max_workers = config.get("max_workers", 5)
-
-        # Thread pool for blocking SDK calls
-        self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
-
         # Track active sandboxes with metadata
         self._sandboxes: dict[str, dict[str, Any]] = {}
 
@@ -63,28 +57,6 @@ class ModalProvider(SandboxProvider):
     def name(self) -> str:
         """Provider name."""
         return "modal"
-
-    def _create_modal_sandbox(self, image: str | Any, cpu: float, memory: int, timeout: int):
-        """Create Modal sandbox synchronously.
-
-        Args:
-            image: Either a string (Docker registry image) or a modal.Image object
-            cpu: CPU cores to allocate
-            memory: Memory in MB
-            timeout: Timeout in seconds
-        """
-        # Modal sandboxes require an App context
-        # Use a persistent app that creates itself if missing
-        app = modal.App.lookup("sandboxes-provider", create_if_missing=True)
-
-        # Handle both string images and modal.Image objects
-        modal_image = modal.Image.from_registry(image) if isinstance(image, str) else image
-
-        # Create Modal sandbox with specified resources
-        sandbox = ModalSandbox.create(
-            app=app, image=modal_image, cpu=cpu, memory=memory, timeout=timeout
-        )
-        return sandbox
 
     def _to_sandbox(self, modal_sandbox: ModalSandbox, metadata: dict[str, Any]) -> Sandbox:
         """Convert Modal sandbox to standard Sandbox."""
@@ -125,10 +97,14 @@ class ModalProvider(SandboxProvider):
             )
             timeout = config.timeout_seconds or self.timeout
 
-            # Create sandbox in thread pool
-            loop = asyncio.get_event_loop()
-            modal_sandbox = await loop.run_in_executor(
-                self._executor, self._create_modal_sandbox, image, cpu, memory, timeout
+            app = await modal.App.lookup.aio("sandboxes-provider", create_if_missing=True)
+            modal_image = modal.Image.from_registry(image) if isinstance(image, str) else image
+            modal_sandbox = await ModalSandbox.create.aio(
+                app=app,
+                image=modal_image,
+                cpu=cpu,
+                memory=memory,
+                timeout=timeout,
             )
 
             # Store metadata - include env_vars for use in each command
@@ -169,10 +145,7 @@ class ModalProvider(SandboxProvider):
 
         # Try to fetch from Modal API
         try:
-            loop = asyncio.get_event_loop()
-            modal_sandbox = await loop.run_in_executor(
-                self._executor, lambda: ModalSandbox.from_id(sandbox_id)
-            )
+            modal_sandbox = await ModalSandbox.from_id.aio(sandbox_id)
 
             # Create metadata for found sandbox
             metadata = {
@@ -208,8 +181,7 @@ class ModalProvider(SandboxProvider):
 
         # Also try to list from Modal API
         try:
-            # Modal's list() is a sync generator
-            modal_sandboxes = list(ModalSandbox.list())
+            modal_sandboxes = [s async for s in ModalSandbox.list.aio()]
 
             for modal_sandbox in modal_sandboxes:
                 if modal_sandbox.object_id not in self._sandboxes:
@@ -289,38 +261,16 @@ class ModalProvider(SandboxProvider):
                 )
                 command = f"{env_setup} && {command}"
 
-            # Execute command in thread pool
-            loop = asyncio.get_event_loop()
             start_time = time.time()
 
             # Modal's exec returns a process object
-            # Use 'sh' instead of 'bash' for alpine compatibility
-            process = await loop.run_in_executor(
-                self._executor,
-                lambda: modal_sandbox.exec("sh", "-c", command, timeout=timeout or self.timeout),
-            )
+            # Use 'sh' instead of 'bash' for alpine compatibility.
+            process = await modal_sandbox.exec.aio("sh", "-c", command, timeout=timeout or self.timeout)
 
-            # Wait for completion first - Modal SDK may require this before reading
-            # wait() might be sync or async
-            wait_result = process.wait()
-            exit_code = await wait_result if asyncio.iscoroutine(wait_result) else wait_result
-
-            # Get output - Modal's read() may be sync or async depending on version
-            if process.stdout:
-                stdout_result = process.stdout.read()
-                stdout = (
-                    await stdout_result if asyncio.iscoroutine(stdout_result) else stdout_result
-                )
-            else:
-                stdout = ""
-
-            if process.stderr:
-                stderr_result = process.stderr.read()
-                stderr = (
-                    await stderr_result if asyncio.iscoroutine(stderr_result) else stderr_result
-                )
-            else:
-                stderr = ""
+            # Wait for completion before reading process output.
+            exit_code = await process.wait.aio()
+            stdout = await process.stdout.read.aio() if process.stdout else ""
+            stderr = await process.stderr.read.aio() if process.stderr else ""
 
             duration_ms = int((time.time() - start_time) * 1000)
 
@@ -364,13 +314,8 @@ class ModalProvider(SandboxProvider):
         if sandbox_id not in self._sandboxes:
             # Try to fetch from API
             try:
-                loop = asyncio.get_event_loop()
-                modal_sandbox = await loop.run_in_executor(
-                    self._executor, lambda: ModalSandbox.from_id(sandbox_id)
-                )
-
-                # Terminate it
-                await loop.run_in_executor(self._executor, lambda: modal_sandbox.terminate())
+                modal_sandbox = await ModalSandbox.from_id.aio(sandbox_id)
+                await modal_sandbox.terminate.aio()
                 return True
             except Exception:
                 return False
@@ -379,9 +324,7 @@ class ModalProvider(SandboxProvider):
             metadata = self._sandboxes[sandbox_id]
             modal_sandbox = metadata["modal_sandbox"]
 
-            # Terminate sandbox in thread pool
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(self._executor, lambda: modal_sandbox.terminate())
+            await modal_sandbox.terminate.aio()
 
             # Remove from tracking
             async with self._lock:
@@ -452,9 +395,3 @@ class ModalProvider(SandboxProvider):
         for sandbox_id in to_destroy:
             logger.info(f"Cleaning up idle sandbox {sandbox_id}")
             await self.destroy_sandbox(sandbox_id)
-
-    def __del__(self):
-        """Cleanup on deletion."""
-        # Shutdown thread pool
-        if hasattr(self, "_executor"):
-            self._executor.shutdown(wait=False)
