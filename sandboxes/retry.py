@@ -8,7 +8,7 @@ import logging
 import random
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from functools import wraps
 from typing import Any, TypeVar
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class CircuitBreakerState(str, Enum):
+class CircuitBreakerState(StrEnum):
     """Circuit breaker states."""
 
     CLOSED = "closed"
