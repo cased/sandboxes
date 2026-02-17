@@ -7,6 +7,7 @@ including p50, p95, and p99 percentiles.
 
 Outputs comprehensive results to benchmarks/results.txt
 """
+
 import subprocess
 import sys
 import time
