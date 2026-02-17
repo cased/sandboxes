@@ -63,7 +63,7 @@ class CloudflareProvider(SandboxProvider):
         self.api_token = api_token
         self.account_id = account_id
         self._transport = transport
-        self._user_agent = "cased-sandboxes/0.4.2"
+        self._user_agent = "cased-sandboxes/0.7.0"
         self._last_accessed: dict[str, float] = {}
 
     @property

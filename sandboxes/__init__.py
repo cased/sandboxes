@@ -4,7 +4,7 @@ Sandboxes - Universal AI Code Execution
 A unified interface for AI code execution sandboxes across multiple providers.
 """
 
-__version__ = "0.4.2"
+__version__ = "0.7.0"
 
 from .base import (
     ExecutionResult,
