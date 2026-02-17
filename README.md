@@ -9,7 +9,7 @@ Universal library for AI code execution sandboxes.
 
 `sandboxes` provides a unified interface for sandboxed code execution across multiple providers:
 
-- **Current providers**: E2B, Modal, Daytona, Hopx, Sprites (Fly.io)
+- **Current providers**: E2B, Modal, Daytona, Hopx, Vercel, Sprites (Fly.io)
 - **Experimental**: Cloudflare (requires self-hosted Worker deployment)
 
 Write your code once and switch between providers with a single line change, or let the library automatically select a provider.
@@ -104,7 +104,7 @@ async def main():
     print(result.stdout)
 
     # Behind the scenes, run() does this:
-    # 1. Auto-detects available providers (e.g., E2B, Modal, Daytona)
+    # 1. Auto-detects available providers (e.g., E2B, Modal, Daytona, Vercel)
     # 2. Creates a new sandbox with the first available provider
     # 3. Executes your command in that isolated environment
     # 4. Returns the result
@@ -412,6 +412,9 @@ export E2B_API_KEY="..."
 export MODAL_TOKEN_ID="..."  # Or use `modal token set`
 export DAYTONA_API_KEY="..."
 export HOPX_API_KEY="hopx_live_<keyId>.<secret>"
+export VERCEL_TOKEN="..."
+export VERCEL_PROJECT_ID="..."
+export VERCEL_TEAM_ID="..."
 export SPRITES_TOKEN="..."  # Or use `sprite login` for CLI mode
 export CLOUDFLARE_SANDBOX_BASE_URL="https://your-worker.workers.dev"
 export CLOUDFLARE_API_TOKEN="..."
@@ -436,8 +439,9 @@ When you call `Sandbox.create()` or `run()`, the library checks for providers in
 2. **E2B** - Looks for `E2B_API_KEY`
 3. **Sprites** - Looks for `SPRITES_TOKEN` or `sprite` CLI login
 4. **Hopx** - Looks for `HOPX_API_KEY`
-5. **Modal** - Looks for `~/.modal.toml` or `MODAL_TOKEN_ID`
-6. **Cloudflare** *(experimental)* - Looks for `CLOUDFLARE_SANDBOX_BASE_URL` + `CLOUDFLARE_API_TOKEN`
+5. **Vercel** - Looks for `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` + `VERCEL_TEAM_ID`
+6. **Modal** - Looks for `~/.modal.toml` or `MODAL_TOKEN_ID`
+7. **Cloudflare** *(experimental)* - Looks for `CLOUDFLARE_SANDBOX_BASE_URL` + `CLOUDFLARE_API_TOKEN`
 
 **The first provider with valid credentials becomes the default.** Cloudflare requires deploying your own Worker.
 
@@ -495,6 +499,7 @@ from sandboxes.providers import (
     ModalProvider,
     DaytonaProvider,
     HopxProvider,
+    VercelProvider,
     SpritesProvider,
     CloudflareProvider,
 )
@@ -510,6 +515,9 @@ provider = DaytonaProvider()
 
 # Hopx - Uses HOPX_API_KEY env var
 provider = HopxProvider()
+
+# Vercel - Uses VERCEL_TOKEN + VERCEL_PROJECT_ID + VERCEL_TEAM_ID env vars
+provider = VercelProvider()
 
 # Sprites - Uses SPRITES_TOKEN or sprite CLI login
 provider = SpritesProvider()  # SDK mode with SPRITES_TOKEN
@@ -527,6 +535,7 @@ Each provider requires appropriate authentication:
 - **Modal**: Run `modal token set` to configure
 - **Daytona**: Set `DAYTONA_API_KEY` environment variable
 - **Hopx**: Set `HOPX_API_KEY` environment variable (format: `hopx_live_<keyId>.<secret>`)
+- **Vercel**: Set `VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, and `VERCEL_TEAM_ID`
 - **Sprites**: Set `SPRITES_TOKEN` environment variable, or run `sprite login` for CLI mode
 - **Cloudflare** *(experimental)*: Deploy the [Cloudflare sandbox Worker](https://github.com/cloudflare/sandbox-sdk) and set `CLOUDFLARE_SANDBOX_BASE_URL`, `CLOUDFLARE_API_TOKEN`, and (optionally) `CLOUDFLARE_ACCOUNT_ID`
 
@@ -556,7 +565,15 @@ Each provider requires appropriate authentication:
 ```python
 import asyncio
 from sandboxes import Manager, SandboxConfig
-from sandboxes.providers import E2BProvider, ModalProvider, DaytonaProvider, SpritesProvider, CloudflareProvider
+from sandboxes.providers import (
+    E2BProvider,
+    ModalProvider,
+    DaytonaProvider,
+    HopxProvider,
+    VercelProvider,
+    SpritesProvider,
+    CloudflareProvider,
+)
 
 async def main():
     # Initialize manager and register providers
@@ -566,6 +583,15 @@ async def main():
     manager.register_provider("modal", ModalProvider, {})
     manager.register_provider("daytona", DaytonaProvider, {})
     manager.register_provider("hopx", HopxProvider, {})
+    manager.register_provider(
+        "vercel",
+        VercelProvider,
+        {
+            "token": "...",
+            "project_id": "...",
+            "team_id": "...",
+        },
+    )
     manager.register_provider("sprites", SpritesProvider, {"use_cli": True})
     manager.register_provider(
         "cloudflare",
@@ -959,4 +985,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 Built by [Cased](https://cased.com)
 
-Thanks to the teams at E2B, Modal, Daytona, Hopx, Fly.io (Sprites), and Cloudflare for their excellent sandbox platforms.
+Thanks to the teams at E2B, Modal, Daytona, Hopx, Vercel, Fly.io (Sprites), and Cloudflare for their excellent sandbox platforms.
