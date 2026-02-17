@@ -2,7 +2,9 @@
 
 import json
 import os
+import shlex
 import tempfile
+import time
 from pathlib import Path
 
 import httpx
@@ -429,3 +431,91 @@ class TestCloudflarePathValidation:
             )
             # Without explicit allowed_dirs restriction, symlinks are followed
             assert result is True
+
+
+class TestCloudflareCommandSanitization:
+    """Security tests for shell command construction."""
+
+    def test_apply_env_vars_rejects_invalid_key(self):
+        with pytest.raises(SandboxError, match="Invalid environment variable name"):
+            CloudflareProvider._apply_env_vars_to_command("echo ok", {"BAD-KEY": "value"})
+
+    @pytest.mark.asyncio
+    async def test_fallback_file_commands_quote_remote_path(self, tmp_path):
+        remote_path = "/workspace/evil;touch-pwn.txt"
+        quoted_remote_path = shlex.quote(remote_path)
+        observed_commands: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/api/session/list":
+                return httpx.Response(200, json={"sessions": ["quote-test"], "count": 1})
+            if request.url.path in {"/api/file/write", "/api/file/read"}:
+                return httpx.Response(404)
+            if request.url.path == "/api/execute":
+                payload = json.loads(request.content.decode())
+                command = payload["command"]
+                observed_commands.append(command)
+                if command.startswith("cat "):
+                    import base64
+
+                    return httpx.Response(
+                        200,
+                        json={
+                            "stdout": base64.b64encode(b"ok").decode("utf-8"),
+                            "stderr": "",
+                            "exitCode": 0,
+                            "success": True,
+                        },
+                    )
+                return httpx.Response(
+                    200, json={"stdout": "", "stderr": "", "exitCode": 0, "success": True}
+                )
+            return httpx.Response(404)
+
+        provider = CloudflareProvider(
+            base_url="https://sandbox.example.workers.dev",
+            transport=httpx.MockTransport(handler),
+        )
+
+        upload_path = tmp_path / "upload.txt"
+        upload_path.write_text("content")
+        download_path = tmp_path / "download.txt"
+
+        upload_success = await provider.upload_file("quote-test", str(upload_path), remote_path)
+        download_success = await provider.download_file("quote-test", remote_path, str(download_path))
+
+        assert upload_success is True
+        assert download_success is True
+        assert download_path.read_bytes() == b"ok"
+
+        assert any(f"> {quoted_remote_path}" in command for command in observed_commands)
+        assert any(f"cat {quoted_remote_path} | base64" == command for command in observed_commands)
+        assert all(f"> {remote_path}" not in command for command in observed_commands)
+        assert all(f"cat {remote_path} | base64" != command for command in observed_commands)
+
+
+@pytest.mark.asyncio
+async def test_cloudflare_cleanup_idle_respects_idle_timeout():
+    deleted_sessions: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/session/list":
+            return httpx.Response(200, json={"sessions": ["old", "fresh"], "count": 2})
+        if request.url.path == "/api/process/kill-all":
+            deleted_sessions.append(request.url.params.get("session", ""))
+            return httpx.Response(200, json={"success": True})
+        return httpx.Response(404)
+
+    provider = CloudflareProvider(
+        base_url="https://sandbox.example.workers.dev",
+        transport=httpx.MockTransport(handler),
+    )
+    now = time.time()
+    provider._last_accessed = {  # noqa: SLF001 - intentional test probe
+        "old": now - 1200,
+        "fresh": now - 10,
+    }
+
+    await provider.cleanup_idle_sandboxes(idle_timeout=600)
+
+    assert deleted_sessions == ["old"]

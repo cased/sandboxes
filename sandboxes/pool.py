@@ -93,6 +93,11 @@ class SandboxPool:
         # Locks for thread-safe operations
         self._lock = asyncio.Lock()
         self._condition = asyncio.Condition(self._lock)
+        self._ensure_min_idle_lock = asyncio.Lock()
+
+        # Template used for eager prewarming
+        self._warm_provider: Any | None = None
+        self._warm_config: SandboxConfig | None = None
 
         # Cleanup task
         self._cleanup_task: asyncio.Task | None = None
@@ -106,10 +111,14 @@ class SandboxPool:
             "errors": 0,
         }
 
-    async def start(self):
+    async def start(self, provider: Any | None = None, config: SandboxConfig | None = None):
         """Start the pool and background tasks."""
         if self.config.auto_cleanup:
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+
+        if provider and config:
+            self._warm_provider = provider
+            self._warm_config = config
 
         # Pre-create sandboxes if using eager strategy
         if self.config.strategy == PoolStrategy.EAGER:
@@ -148,6 +157,12 @@ class SandboxPool:
 
         if self.config.max_total <= 0:
             raise SandboxQuotaError("Pool limit reached: 0")
+
+        self._warm_provider = provider
+        self._warm_config = config
+
+        if self.config.strategy == PoolStrategy.EAGER:
+            await self._ensure_min_idle(provider, config)
 
         eviction_entry: SandboxPoolEntry | None = None
 
@@ -223,6 +238,9 @@ class SandboxPool:
         for entry in evictions:
             await self._finalize_eviction(entry)
 
+        if self.config.strategy == PoolStrategy.EAGER:
+            await self._ensure_min_idle()
+
     async def destroy(self, sandbox_id: str):
         """
         Destroy a sandbox and remove from pool.
@@ -266,6 +284,7 @@ class SandboxPool:
 
         # Add to pool
         self._pool[sandbox.id] = entry
+        self._idle_sandboxes.add(sandbox.id)
 
         # Update label index
         for key, value in entry.labels.items():
@@ -354,11 +373,36 @@ class SandboxPool:
         await self._finalize_eviction(entry)
         return True
 
-    async def _ensure_min_idle(self):
+    async def _ensure_min_idle(
+        self, provider: Any | None = None, config: SandboxConfig | None = None
+    ) -> None:
         """Ensure minimum idle sandboxes (for eager strategy)."""
-        # This would need provider and config information
-        # Implement based on specific requirements
-        pass
+        async with self._ensure_min_idle_lock:
+            if provider and config:
+                self._warm_provider = provider
+                self._warm_config = config
+
+            provider_to_use = provider or self._warm_provider
+            config_to_use = config or self._warm_config
+            if provider_to_use is None or config_to_use is None:
+                return
+
+            target_idle = min(self.config.min_idle, self.config.max_idle, self.config.max_total)
+            if target_idle <= 0:
+                return
+
+            while True:
+                async with self._lock:
+                    idle_count = len(self._idle_sandboxes)
+                    total_count = len(self._pool)
+                    if idle_count >= target_idle or total_count >= self.config.max_total:
+                        return
+                    try:
+                        await self._create_sandbox(provider_to_use, config_to_use)
+                    except Exception as e:
+                        self._stats["errors"] += 1
+                        logger.error(f"Failed to pre-create idle sandbox: {e}")
+                        return
 
     async def _remove_from_pool(self, sandbox_id: str):
         """Remove sandbox from pool and indexes."""
@@ -449,6 +493,9 @@ class SandboxPool:
         for sandbox_id in expired:
             logger.info(f"Cleaning up expired sandbox {sandbox_id}")
             await self.destroy(sandbox_id)
+
+        if self.config.strategy == PoolStrategy.EAGER:
+            await self._ensure_min_idle()
 
     async def _call_hook(self, hook: Callable, *args, **kwargs):
         """Call a lifecycle hook safely."""

@@ -62,12 +62,26 @@ class E2BProvider(SandboxProvider):
     async def _create_e2b_sandbox(self, template_id=None, env_vars=None, timeout=None):
         """Create E2B sandbox asynchronously."""
         # timeout sets the sandbox lifetime in seconds
-        return await E2BSandbox.create(
-            template=template_id,
-            envs=env_vars,
-            api_key=self.api_key,
-            timeout=timeout or self.timeout,
-        )
+        self._reset_e2b_transport_singleton()
+        try:
+            return await E2BSandbox.create(
+                template=template_id,
+                envs=env_vars,
+                api_key=self.api_key,
+                timeout=timeout or self.timeout,
+            )
+        except RuntimeError as e:
+            # e2b>=2.13 uses a process-wide singleton async transport which can be bound
+            # to a closed event loop across test loops; reset and retry once.
+            if "Event loop is closed" not in str(e):
+                raise
+            self._reset_e2b_transport_singleton()
+            return await E2BSandbox.create(
+                template=template_id,
+                envs=env_vars,
+                api_key=self.api_key,
+                timeout=timeout or self.timeout,
+            )
 
     def _to_sandbox(self, e2b_sandbox, metadata: dict[str, Any]) -> Sandbox:
         """Convert E2B sandbox to standard Sandbox."""
@@ -139,7 +153,12 @@ class E2BProvider(SandboxProvider):
         # First, get all sandboxes from E2B API
         try:
             # E2B's list() can return either a coroutine or AsyncSandboxPaginator depending on version
-            result = E2BSandbox.list()
+            self._reset_e2b_transport_singleton()
+            try:
+                result = E2BSandbox.list(api_key=self.api_key)
+            except TypeError:
+                # Older SDK versions don't accept api_key in list()
+                result = E2BSandbox.list()
 
             # Handle different return types
             if hasattr(result, "next_items"):
@@ -183,6 +202,7 @@ class E2BProvider(SandboxProvider):
                             "template": listed_sandbox.template_id,
                             "name": listed_sandbox.name,
                             "end_at": listed_sandbox.end_at,
+                            "last_accessed": metadata.get("last_accessed"),
                         },
                     )
                 )
@@ -202,9 +222,14 @@ class E2BProvider(SandboxProvider):
         """Find a running sandbox with matching labels for reuse."""
         sandboxes = await self.list_sandboxes(labels=labels)
         if sandboxes:
-            # Return most recently accessed
-            sandboxes.sort(key=lambda s: self._sandboxes[s.id]["last_accessed"], reverse=True)
-            logger.info(f"Found existing sandbox {sandboxes[0].id} with labels {labels}")
+            # Prefer tracked sandboxes so we can reuse recency metadata safely.
+            tracked = [s for s in sandboxes if s.id in self._sandboxes]
+            if tracked:
+                tracked.sort(key=lambda s: self._sandboxes[s.id]["last_accessed"], reverse=True)
+                logger.info(f"Found existing sandbox {tracked[0].id} with labels {labels}")
+                return tracked[0]
+
+            logger.info(f"Found API-listed sandbox {sandboxes[0].id} with labels {labels}")
             return sandboxes[0]
         return None
 
@@ -457,6 +482,7 @@ echo $!
                 e2b_sandbox = metadata["e2b_sandbox"]
             else:
                 # Try to connect to it via API
+                self._reset_e2b_transport_singleton()
                 e2b_sandbox = await E2BSandbox.connect(sandbox_id)
 
             # Kill sandbox asynchronously
@@ -538,3 +564,16 @@ echo $!
         # Shutdown thread pool
         if hasattr(self, "_executor"):
             self._executor.shutdown(wait=False)
+
+    @staticmethod
+    def _reset_e2b_transport_singleton() -> None:
+        """Reset e2b async transport singleton to avoid closed-loop reuse across test loops."""
+        try:
+            from e2b.api import client_async as e2b_client_async
+
+            transport_cls = getattr(e2b_client_async, "AsyncTransportWithLogger", None)
+            if transport_cls is not None:
+                transport_cls.singleton = None
+        except Exception:
+            # Best-effort reset for compatibility across SDK versions.
+            pass

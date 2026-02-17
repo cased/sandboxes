@@ -1,6 +1,7 @@
 """Daytona sandbox provider implementation."""
 
 import logging
+import math
 import os
 from typing import Any
 
@@ -114,15 +115,24 @@ class DaytonaProvider(SandboxProvider):
                 # Configure resources if specified
                 resources = None
                 if config.memory_mb or config.cpu_cores:
+                    memory_gib = None
+                    if config.memory_mb:
+                        # Daytona resources.memory is GiB; round up to avoid 0 GiB allocations.
+                        memory_gib = max(1, math.ceil(config.memory_mb / 1024))
                     resources = Resources(
                         cpu=int(config.cpu_cores) if config.cpu_cores else None,
-                        memory=int(config.memory_mb / 1024) if config.memory_mb else None,
+                        memory=memory_gib,
                     )
                     logger.info(
                         f"Configuring resources: CPU={config.cpu_cores}, Memory={config.memory_mb}MB"
                     )
 
-                params = CreateSandboxFromImageParams(image=image, resources=resources)
+                params = CreateSandboxFromImageParams(
+                    image=image,
+                    resources=resources,
+                    labels=config.labels or {},
+                    env_vars=config.env_vars or {},
+                )
             else:
                 # Use language-based creation (fallback)
                 language = (
