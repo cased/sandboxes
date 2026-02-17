@@ -74,9 +74,8 @@ class Sandbox:
         2. E2B
         3. Sprites
         4. Hopx
-        5. Vercel
-        6. Modal
-        7. Cloudflare (experimental)
+        5. Modal
+        6. Cloudflare (experimental)
 
         The first registered provider becomes the default unless explicitly set.
         Users can override with Sandbox.configure(default_provider="...").
@@ -88,7 +87,6 @@ class Sandbox:
             HopxProvider,
             ModalProvider,
             SpritesProvider,
-            VercelProvider,
         )
 
         manager = cls._manager
@@ -132,29 +130,7 @@ class Sandbox:
             except Exception as e:
                 logger.debug(f"Failed to register Hopx provider: {e}")
 
-        # Try to register Vercel (priority 5)
-        vercel_token = (
-            os.getenv("VERCEL_TOKEN")
-            or os.getenv("VERCEL_API_TOKEN")
-            or os.getenv("VERCEL_ACCESS_TOKEN")
-            or os.getenv("VERCEL_OIDC_TOKEN")
-        )
-        if vercel_token and os.getenv("VERCEL_PROJECT_ID") and os.getenv("VERCEL_TEAM_ID"):
-            try:
-                manager.register_provider(
-                    "vercel",
-                    VercelProvider,
-                    {
-                        "token": vercel_token,
-                        "project_id": os.getenv("VERCEL_PROJECT_ID"),
-                        "team_id": os.getenv("VERCEL_TEAM_ID"),
-                    },
-                )
-                logger.info("Registered Vercel provider")
-            except Exception as e:
-                logger.debug(f"Failed to register Vercel provider: {e}")
-
-        # Try to register Modal (priority 6)
+        # Try to register Modal (priority 5)
         if os.path.exists(os.path.expanduser("~/.modal.toml")) or os.getenv("MODAL_TOKEN_ID"):
             try:
                 manager.register_provider("modal", ModalProvider, {})
@@ -162,7 +138,7 @@ class Sandbox:
             except Exception as e:
                 logger.debug(f"Failed to register Modal provider: {e}")
 
-        # Try to register Cloudflare (priority 7 - experimental)
+        # Try to register Cloudflare (priority 6 - experimental)
         base_url = os.getenv("CLOUDFLARE_SANDBOX_BASE_URL")
         api_token = os.getenv("CLOUDFLARE_API_TOKEN")
         if base_url and api_token:
@@ -188,9 +164,6 @@ class Sandbox:
         modal_token: str | None = None,
         daytona_api_key: str | None = None,
         hopx_api_key: str | None = None,
-        vercel_token: str | None = None,
-        vercel_project_id: str | None = None,
-        vercel_team_id: str | None = None,
         sprites_token: str | None = None,
         cloudflare_config: dict[str, str] | None = None,
         default_provider: str | None = None,
@@ -212,7 +185,6 @@ class Sandbox:
             HopxProvider,
             ModalProvider,
             SpritesProvider,
-            VercelProvider,
         )
 
         manager = cls._ensure_manager()
@@ -229,17 +201,6 @@ class Sandbox:
 
         if hopx_api_key:
             manager.register_provider("hopx", HopxProvider, {"api_key": hopx_api_key})
-
-        if vercel_token or vercel_project_id or vercel_team_id:
-            manager.register_provider(
-                "vercel",
-                VercelProvider,
-                {
-                    "token": vercel_token,
-                    "project_id": vercel_project_id,
-                    "team_id": vercel_team_id,
-                },
-            )
 
         if sprites_token:
             manager.register_provider("sprites", SpritesProvider, {"token": sprites_token})

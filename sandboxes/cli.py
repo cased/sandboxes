@@ -40,13 +40,6 @@ def _provider_classes():
         pass
 
     try:
-        from sandboxes.providers.vercel import VercelProvider
-
-        providers["vercel"] = VercelProvider
-    except ImportError:
-        pass
-
-    try:
         from sandboxes.providers.hopx import HopxProvider
 
         providers["hopx"] = HopxProvider
@@ -87,16 +80,6 @@ def get_provider(name: str):
                 api_token=os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_API_KEY"),
                 account_id=os.getenv("CLOUDFLARE_ACCOUNT_ID"),
             )
-        if name == "vercel":
-            return provider_class(
-                token=(
-                    os.getenv("VERCEL_TOKEN")
-                    or os.getenv("VERCEL_API_TOKEN")
-                    or os.getenv("VERCEL_ACCESS_TOKEN")
-                ),
-                project_id=os.getenv("VERCEL_PROJECT_ID"),
-                team_id=os.getenv("VERCEL_TEAM_ID"),
-            )
         return provider_class()
     except Exception as e:
         click.echo(f"❌ Failed to initialize {name}: {e}", err=True)
@@ -118,7 +101,7 @@ def cli():
     "--provider",
     "-p",
     default="daytona",
-    help="Provider to use (e.g. daytona, e2b, modal, vercel)",
+    help="Provider to use (e.g. daytona, e2b, modal)",
 )
 @click.option("--image", "-i", help="Docker image or template")
 @click.option("--env", "-e", multiple=True, help="Environment variables (KEY=VALUE)")
@@ -502,7 +485,6 @@ def providers(capabilities):
         ("e2b", "E2B_API_KEY", "E2B cloud sandboxes", False),
         ("modal", "~/.modal.toml", "Modal serverless containers", False),
         ("daytona", "DAYTONA_API_KEY", "Daytona development environments", False),
-        ("vercel", "VERCEL_TOKEN + PROJECT_ID + TEAM_ID", "Vercel Sandboxes", False),
         ("hopx", "HOPX_API_KEY", "Hopx secure cloud sandboxes", False),
         (
             "sprites",
@@ -526,17 +508,6 @@ def providers(capabilities):
             configured = bool(os.getenv("E2B_API_KEY"))
         elif name == "daytona":
             configured = bool(os.getenv("DAYTONA_API_KEY"))
-        elif name == "vercel":
-            configured = bool(
-                (
-                    os.getenv("VERCEL_TOKEN")
-                    or os.getenv("VERCEL_API_TOKEN")
-                    or os.getenv("VERCEL_ACCESS_TOKEN")
-                    or os.getenv("VERCEL_OIDC_TOKEN")
-                )
-                and os.getenv("VERCEL_PROJECT_ID")
-                and os.getenv("VERCEL_TEAM_ID")
-            )
         elif name == "hopx":
             configured = bool(os.getenv("HOPX_API_KEY"))
         elif name == "sprites":
@@ -606,7 +577,6 @@ def providers(capabilities):
     click.echo("  E2B: export E2B_API_KEY=your_key")
     click.echo("  Modal: modal token set")
     click.echo("  Daytona: export DAYTONA_API_KEY=your_key")
-    click.echo("  Vercel: export VERCEL_TOKEN=... VERCEL_PROJECT_ID=... VERCEL_TEAM_ID=...")
     click.echo("  Hopx: export HOPX_API_KEY=hopx_live_<keyId>.<secret>")
     click.echo("  Sprites: sprite login (or export SPRITES_TOKEN=your_token)")
     click.echo(
