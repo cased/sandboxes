@@ -13,7 +13,9 @@ from benchmarks.provider_matrix import benchmark_image_for_provider, discover_be
 from sandboxes import SandboxConfig
 
 
-async def verify_and_benchmark(provider_name: str, display_name: str, provider_class, runs: int = 20):
+async def verify_and_benchmark(
+    provider_name: str, display_name: str, provider_class, runs: int = 20
+):
     """Benchmark provider with verification."""
     print(f"\n{'='*80}")
     print(f"{display_name} - {runs} ITERATIONS")

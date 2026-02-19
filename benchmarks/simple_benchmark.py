@@ -14,7 +14,9 @@ from benchmarks.provider_matrix import benchmark_image_for_provider, discover_be
 from sandboxes import SandboxConfig
 
 
-async def benchmark_provider(provider_name: str, display_name: str, provider_class, runs: int = 3) -> dict | None:
+async def benchmark_provider(
+    provider_name: str, display_name: str, provider_class, runs: int = 3
+) -> dict | None:
     """Run a quick create/exec/destroy smoke benchmark for a provider."""
     try:
         provider = provider_class()
@@ -33,7 +35,9 @@ async def benchmark_provider(provider_name: str, display_name: str, provider_cla
     for i in range(runs):
         total_start = time.time()
         try:
-            config = SandboxConfig(labels={"benchmark": "simple", "provider": provider_name, "run": str(i)})
+            config = SandboxConfig(
+                labels={"benchmark": "simple", "provider": provider_name, "run": str(i)}
+            )
             runtime_image = benchmark_image_for_provider(provider_name)
             if runtime_image:
                 config.image = runtime_image
@@ -46,7 +50,7 @@ async def benchmark_provider(provider_name: str, display_name: str, provider_cla
             start = time.time()
             result = await provider.execute_command(
                 sandbox.id,
-                'python3 -c \'import sys; print(sys.version.split()[0])\'',
+                "python3 -c 'import sys; print(sys.version.split()[0])'",
             )
             execute_time = (time.time() - start) * 1000
             execute_times.append(execute_time)
@@ -94,7 +98,9 @@ async def main():
     results = []
     for provider in providers:
         provider_class = provider.load_class()
-        result = await benchmark_provider(provider.name, provider.display_name, provider_class, runs=3)
+        result = await benchmark_provider(
+            provider.name, provider.display_name, provider_class, runs=3
+        )
         if result:
             results.append(result)
 
@@ -105,7 +111,9 @@ async def main():
     print("\n" + "=" * 80)
     print("QUICK BENCHMARK SUMMARY")
     print("=" * 80)
-    print(f"{'Provider':<12} {'Runs':<6} {'Create':<10} {'Execute':<10} {'Destroy':<10} {'Total':<10}")
+    print(
+        f"{'Provider':<12} {'Runs':<6} {'Create':<10} {'Execute':<10} {'Destroy':<10} {'Total':<10}"
+    )
     print("-" * 80)
     for result in sorted(results, key=lambda r: r["total_median"]):
         print(

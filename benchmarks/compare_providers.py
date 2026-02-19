@@ -14,7 +14,9 @@ from benchmarks.provider_matrix import benchmark_image_for_provider, discover_be
 from sandboxes import SandboxConfig
 
 
-async def benchmark_provider(provider_name: str, display_name: str, provider_class, runs: int = 3) -> dict | None:
+async def benchmark_provider(
+    provider_name: str, display_name: str, provider_class, runs: int = 3
+) -> dict | None:
     """Benchmark a single provider."""
     try:
         provider = provider_class()
@@ -118,7 +120,9 @@ async def main():
 
     for provider in provider_specs:
         provider_class = provider.load_class()
-        result = await benchmark_provider(provider.name, provider.display_name, provider_class, runs=3)
+        result = await benchmark_provider(
+            provider.name, provider.display_name, provider_class, runs=3
+        )
         if result:
             results.append(result)
 
