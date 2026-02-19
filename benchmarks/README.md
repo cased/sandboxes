@@ -4,10 +4,10 @@ Comprehensive benchmark suite for comparing sandbox provider performance.
 
 ## Available Benchmarks
 
-### 🎯 comprehensive_benchmark.py (RECOMMENDED)
+### comprehensive_benchmark.py (RECOMMENDED)
 **Apples-to-apples comparison with realistic workloads**
 
-Tests all providers with diverse scenarios:
+Tests all configured providers with diverse scenarios:
 - Hello World (shell execution)
 - Prime Calculation (CPU-bound)
 - File I/O (1000 files)
@@ -15,7 +15,10 @@ Tests all providers with diverse scenarios:
 - NumPy FFT (numerical computation)
 
 **Features:**
-- Uses standardized image (`daytonaio/ai-test:0.2.3`) for Modal and Daytona
+- Uses standardized runtime hints per provider:
+  - Modal/Daytona: standardized Docker image
+  - E2B/Hopx: configurable template IDs
+  - Sprites/Vercel: provider defaults
 - Multiple runs with statistical analysis (mean, stddev, min, max)
 - Detailed error reporting
 - Winner tracking across all tests
@@ -29,7 +32,7 @@ python benchmarks/comprehensive_benchmark.py
 
 ---
 
-### 📊 compare_providers.py
+### compare_providers.py
 **Lifecycle breakdown (create/execute/destroy)**
 
 Tests basic sandbox operations with detailed timing for each phase:
@@ -47,10 +50,10 @@ python benchmarks/compare_providers.py
 
 ---
 
-### ⚡ simple_benchmark.py
+### simple_benchmark.py
 **Quick smoke test**
 
-Fast basic test to verify providers are working.
+Fast create/exec/destroy verification across all configured providers.
 
 **Usage:**
 ```bash
@@ -59,7 +62,7 @@ python benchmarks/simple_benchmark.py
 
 ---
 
-### 🔥 benchmark_20x.py
+### benchmark_20x.py
 **Concurrent execution test**
 
 Tests 20 concurrent sandbox operations to measure parallelism and throughput.
@@ -71,7 +74,7 @@ python benchmarks/benchmark_20x.py
 
 ---
 
-### ❄️ cold_vs_warm.py
+### cold_vs_warm.py
 **Cold start analysis**
 
 Compares cold start (first run) vs warm start (subsequent runs) performance.
@@ -83,10 +86,11 @@ python benchmarks/cold_vs_warm.py
 
 ---
 
-### 🖼️ image_reuse.py
+### image_reuse.py
 **Image caching test**
 
-Tests how providers handle image reuse and caching.
+Tests how providers that support explicit image/template runtime configuration
+handle reuse and caching (currently Modal, Daytona, E2B, and Hopx).
 
 **Usage:**
 ```bash
@@ -99,9 +103,12 @@ python benchmarks/image_reuse.py
 
 All benchmarks auto-detect available providers based on environment variables:
 
-- **E2B**: Set `E2B_API_KEY`
-- **Modal**: Run `modal token set` or set `MODAL_TOKEN_ID`
 - **Daytona**: Set `DAYTONA_API_KEY`
+- **E2B**: Set `E2B_API_KEY`
+- **Sprites**: Set `SPRITES_TOKEN` or run `sprite login`
+- **Hopx**: Set `HOPX_API_KEY`
+- **Vercel**: Set `VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, and `VERCEL_TEAM_ID`
+- **Modal**: Run `modal token set` or set `MODAL_TOKEN_ID`
 
 ## Standard Image
 
@@ -111,18 +118,29 @@ For apples-to-apples comparison, benchmarks use comparable environments:
   - Python 3.13, numpy, requests, anthropic, cohere, beautifulsoup4, and many AI/ML packages
   - Both providers support arbitrary Docker images
 
-- **E2B**: `code-interpreter` template
+- **E2B**: `code-interpreter` template by default
   - Python, npm, Jupyter, and common ML packages (numpy, pandas, matplotlib, etc.)
   - E2B uses templates instead of Docker images
-  - Custom templates supported via `config.image` or `config.provider_config["template"]`
+  - Benchmarks prefer `E2B_BENCHMARK_TEMPLATE`, then `benchmarks/e2b-daytona-benchmark/e2b.toml`, then `code-interpreter`
+  - Override with `E2B_BENCHMARK_TEMPLATE`
+  - If you see `Template is not compatible with secured access`, set `E2B_BENCHMARK_TEMPLATE` to a secured-access compatible template ID
+
+- **Hopx**: `code-interpreter` template by default
+  - Override with `HOPX_BENCHMARK_TEMPLATE`
+
+- **Sprites/Vercel**:
+  - Benchmarks use provider defaults for runtime/image behavior
+
+Cloudflare provider benchmarks are intentionally excluded by default.
 
 ## Contributing
 
 When adding new benchmarks:
-1. Use the standardized image for Modal/Daytona
-2. Include statistical analysis (mean, stddev)
-3. Add error handling and detailed reporting
-4. Update this README
+1. Keep provider discovery centralized (see `benchmarks/provider_matrix.py`)
+2. Use standardized runtime hints for fair comparisons where possible
+3. Include statistical analysis (mean, stddev)
+4. Add error handling and detailed reporting
+5. Update this README
 
 ## License
 

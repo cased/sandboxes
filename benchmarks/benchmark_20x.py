@@ -9,16 +9,14 @@ from statistics import mean, median, quantiles, stdev
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from benchmarks.provider_matrix import benchmark_image_for_provider, discover_benchmark_providers
 from sandboxes import SandboxConfig
-from sandboxes.providers.daytona import DaytonaProvider
-from sandboxes.providers.e2b import E2BProvider
-from sandboxes.providers.modal import ModalProvider
 
 
-async def verify_and_benchmark(provider_class, name: str, runs: int = 20):
+async def verify_and_benchmark(provider_name: str, display_name: str, provider_class, runs: int = 20):
     """Benchmark provider with verification."""
     print(f"\n{'='*80}")
-    print(f"4{name} - {runs} ITERATIONS")
+    print(f"{display_name} - {runs} ITERATIONS")
     print(f"{'='*80}")
 
     try:
@@ -61,9 +59,10 @@ async def verify_and_benchmark(provider_class, name: str, runs: int = 20):
         try:
             # Create sandbox
             start = time.time()
-            config = SandboxConfig(labels={"benchmark": f"{name.lower()}_20x", "run": str(i + 1)})
-            if name == "Modal":
-                config.provider_config = {"image": "python:3.11-slim"}
+            config = SandboxConfig(labels={"benchmark": f"{provider_name}_20x", "run": str(i + 1)})
+            runtime_image = benchmark_image_for_provider(provider_name)
+            if runtime_image:
+                config.image = runtime_image
 
             sandbox = await provider.create_sandbox(config)
             create_time = (time.time() - start) * 1000
@@ -111,11 +110,11 @@ async def verify_and_benchmark(provider_class, name: str, runs: int = 20):
         print("   Could not verify final count")
 
     if not create_times:
-        print(f"\n❌ All runs failed for {name}")
+        print(f"\n❌ All runs failed for {display_name}")
         return None
 
     # Calculate comprehensive statistics
-    print(f"\n📈 STATISTICS FOR {name} ({len(create_times)}/{runs} successful)")
+    print(f"\n📈 STATISTICS FOR {display_name} ({len(create_times)}/{runs} successful)")
     print("=" * 60)
 
     def print_detailed_stats(name, times):
@@ -147,7 +146,7 @@ async def verify_and_benchmark(provider_class, name: str, runs: int = 20):
     print(f"  Sample IDs: {created_ids[:3] if created_ids else 'None'}")
 
     return {
-        "name": name,
+        "name": display_name,
         "runs": runs,
         "successful": len(create_times),
         "failed": failed_runs,
@@ -163,25 +162,26 @@ async def main():
     """Run 20-iteration benchmark for all providers."""
     print("🔬 COMPREHENSIVE BENCHMARK - 20 ITERATIONS PER PROVIDER")
     print("=" * 80)
-    print("This will create and destroy 60 sandboxes total.")
-    print("Estimated time: 3-5 minutes")
+    provider_specs = discover_benchmark_providers(include_cloudflare=False)
+    estimated_sandboxes = len(provider_specs) * 20
+    print(f"This will create and destroy up to {estimated_sandboxes} sandboxes total.")
+    print("Estimated time: provider-dependent")
 
     results = []
 
-    # Test each provider
-    for provider_class, name in [
-        (ModalProvider, "Modal"),
-        (E2BProvider, "E2B"),
-        (DaytonaProvider, "Daytona"),
-    ]:
-        if name == "E2B" and not os.getenv("E2B_API_KEY"):
-            print(f"\n⚠️ Skipping {name} - no API key")
-            continue
-        if name == "Daytona" and not os.getenv("DAYTONA_API_KEY"):
-            print(f"\n⚠️ Skipping {name} - no API key")
-            continue
+    if not provider_specs:
+        print("\n❌ No configured providers found.")
+        return
 
-        result = await verify_and_benchmark(provider_class, name, runs=20)
+    # Test each provider
+    for provider in provider_specs:
+        provider_class = provider.load_class()
+        result = await verify_and_benchmark(
+            provider.name,
+            provider.display_name,
+            provider_class,
+            runs=20,
+        )
         if result:
             results.append(result)
 

@@ -2,12 +2,13 @@
 """
 Meta-benchmark runner that executes all benchmarks multiple times.
 
-Runs each benchmark 10 times, aggregates results, and calculates statistics
-including p50, p95, and p99 percentiles.
+Runs each benchmark according to the per-suite `runs` configuration, aggregates
+results, and calculates statistics including p50, p95, and p99 percentiles.
 
 Outputs comprehensive results to benchmarks/results.txt
 """
 
+import os
 import subprocess
 import sys
 import time
@@ -59,6 +60,8 @@ BENCHMARKS = [
     },
 ]
 
+BENCHMARK_SCRIPT_TIMEOUT_SECONDS = int(os.getenv("BENCHMARK_SCRIPT_TIMEOUT_SECONDS", "1800"))
+
 
 def calculate_percentiles(data: list[float]) -> dict[str, float]:
     """Calculate p50, p95, p99 percentiles."""
@@ -98,7 +101,7 @@ def run_benchmark(script: str, run_number: int) -> dict[str, Any]:
             [sys.executable, str(script_path)],
             capture_output=True,
             text=True,
-            timeout=600,  # 10 minute timeout
+            timeout=BENCHMARK_SCRIPT_TIMEOUT_SECONDS,
         )
         duration = time.time() - start
 
@@ -121,7 +124,7 @@ def run_benchmark(script: str, run_number: int) -> dict[str, Any]:
             "success": False,
             "duration_seconds": duration,
             "stdout": "",
-            "stderr": "Benchmark timed out after 10 minutes",
+            "stderr": f"Benchmark timed out after {BENCHMARK_SCRIPT_TIMEOUT_SECONDS} seconds",
             "exit_code": -1,
         }
     except Exception as e:

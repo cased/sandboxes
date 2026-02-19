@@ -9,10 +9,11 @@ from statistics import mean, median
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from benchmarks.provider_matrix import (
+    benchmark_image_for_provider,
+    discover_benchmark_providers,
+)
 from sandboxes import SandboxConfig
-from sandboxes.providers.daytona import DaytonaProvider
-from sandboxes.providers.e2b import E2BProvider
-from sandboxes.providers.modal import ModalProvider
 
 
 async def test_same_image_reuse(
@@ -183,58 +184,54 @@ async def test_concurrent_same_image(
     }
 
 
-async def test_provider_image_patterns(provider_class, provider_name: str):
+async def test_provider_image_patterns(provider_name: str, display_name: str, provider_class):
     """Test image reuse patterns for a provider."""
     print(f"\n{'='*80}")
-    print(f"🖼️  IMAGE REUSE ANALYSIS: {provider_name}")
+    print(f"🖼️  IMAGE REUSE ANALYSIS: {display_name}")
     print(f"{'='*80}")
 
     try:
         provider = provider_class()
 
         # Provider-specific image configs
-        if provider_name == "Modal":
-            primary_image = "python:3.11-slim"
+        if provider_name == "modal":
+            primary_image = benchmark_image_for_provider(provider_name)
             test_images = [
                 "python:3.11-slim",
                 "python:3.12-slim",
                 "python:3.10-slim",
                 "ubuntu:22.04",
             ]
-        elif provider_name == "E2B":
-            # E2B uses templates, not Docker images
-            primary_image = None  # Default template
-            test_images = [None]  # Only default for now
-        elif provider_name == "Daytona":
-            primary_image = "daytonaio/ai-test:0.2.3"
-            test_images = ["daytonaio/ai-test:0.2.3"]
+        elif provider_name in {"e2b", "daytona", "hopx"}:
+            primary_image = benchmark_image_for_provider(provider_name)
+            test_images = [primary_image] if primary_image else []
         else:
             return None
 
         results = {}
 
         # Test 1: Same image reuse
-        if primary_image is not None:
+        if primary_image:
             same_image_results = await test_same_image_reuse(
-                provider, provider_name, primary_image, iterations=5
+                provider, display_name, primary_image, iterations=5
             )
             results["same_image"] = same_image_results
 
             # Test 2: Concurrent same image
             concurrent_results = await test_concurrent_same_image(
-                provider, provider_name, primary_image, concurrency=3
+                provider, display_name, primary_image, concurrency=3
             )
             results["concurrent_same"] = concurrent_results
 
         # Test 3: Different images (Modal only for now)
-        if provider_name == "Modal":
+        if provider_name == "modal":
             different_images_results = await test_different_images(
-                provider, provider_name, test_images
+                provider, display_name, test_images
             )
             results["different_images"] = different_images_results
 
         # Analysis
-        print(f"\n📊 IMAGE REUSE ANALYSIS FOR {provider_name}")
+        print(f"\n📊 IMAGE REUSE ANALYSIS FOR {display_name}")
         print(f"{'='*60}")
 
         if "same_image" in results:
@@ -286,7 +283,7 @@ async def test_provider_image_patterns(provider_class, provider_name: str):
         return results
 
     except Exception as e:
-        print(f"❌ Error testing {provider_name}: {e}")
+        print(f"❌ Error testing {display_name}: {e}")
         return None
 
 
@@ -296,20 +293,21 @@ async def main():
     print("=" * 80)
     print("Testing image caching and reuse patterns...")
 
-    providers_to_test = [
-        (ModalProvider, "Modal"),
-        (E2BProvider, "E2B") if os.getenv("E2B_API_KEY") else None,
-        (DaytonaProvider, "Daytona") if os.getenv("DAYTONA_API_KEY") else None,
-    ]
-
-    # Filter out None values
-    providers_to_test = [p for p in providers_to_test if p is not None]
+    providers_to_test = discover_benchmark_providers(
+        include_cloudflare=False,
+        image_only=True,
+    )
 
     all_results = []
-    for provider_class, name in providers_to_test:
-        result = await test_provider_image_patterns(provider_class, name)
+    for provider in providers_to_test:
+        provider_class = provider.load_class()
+        result = await test_provider_image_patterns(
+            provider.name,
+            provider.display_name,
+            provider_class,
+        )
         if result:
-            all_results.append((name, result))
+            all_results.append((provider.display_name, result))
 
         # Delay between providers
         await asyncio.sleep(3)

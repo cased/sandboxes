@@ -10,18 +10,19 @@ from statistics import mean, median
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from benchmarks.provider_matrix import benchmark_image_for_provider, discover_benchmark_providers
 from sandboxes import SandboxConfig
 
 
-async def benchmark_provider(provider_class, name: str, runs: int = 3) -> dict | None:
+async def benchmark_provider(provider_name: str, display_name: str, provider_class, runs: int = 3) -> dict | None:
     """Benchmark a single provider."""
     try:
         provider = provider_class()
         print(f"\n{'='*60}")
-        print(f"📦 Benchmarking {name}")
+        print(f"📦 Benchmarking {display_name}")
         print(f"{'='*60}")
     except Exception as e:
-        print(f"\n❌ {name} not available: {e}")
+        print(f"\n❌ {display_name} not available: {e}")
         return None
 
     create_times = []
@@ -36,11 +37,10 @@ async def benchmark_provider(provider_class, name: str, runs: int = 3) -> dict |
         try:
             # Create sandbox
             start = time.time()
-            config = SandboxConfig(labels={"benchmark": f"{name.lower()}_run_{i}"})
-            # Use standardized image for apples-to-apples comparison
-            # daytonaio/ai-test:0.2.3 includes Python 3.13 + numpy + many AI/ML packages
-            if name in ["Modal", "Daytona"]:
-                config.image = "daytonaio/ai-test:0.2.3"
+            config = SandboxConfig(labels={"benchmark": f"{provider_name}_run_{i}"})
+            runtime_image = benchmark_image_for_provider(provider_name)
+            if runtime_image:
+                config.image = runtime_image
 
             sandbox = await provider.create_sandbox(config)
             create_time = (time.time() - start) * 1000
@@ -79,7 +79,7 @@ async def benchmark_provider(provider_class, name: str, runs: int = 3) -> dict |
         return None
 
     return {
-        "name": name,
+        "name": display_name,
         "create": {
             "mean": mean(create_times),
             "median": median(create_times),
@@ -114,35 +114,13 @@ async def main():
     print("Testing with 3 runs per provider...")
 
     results = []
+    provider_specs = discover_benchmark_providers(include_cloudflare=False)
 
-    # Test Modal (we know this works)
-    from sandboxes.providers.modal import ModalProvider
-
-    modal_result = await benchmark_provider(ModalProvider, "Modal", runs=3)
-    if modal_result:
-        results.append(modal_result)
-
-    # Try E2B if available
-    if os.getenv("E2B_API_KEY"):
-        try:
-            from sandboxes.providers.e2b import E2BProvider
-
-            e2b_result = await benchmark_provider(E2BProvider, "E2B", runs=3)
-            if e2b_result:
-                results.append(e2b_result)
-        except Exception as e:
-            print(f"\n❌ E2B error: {e}")
-
-    # Try Daytona if available
-    if os.getenv("DAYTONA_API_KEY"):
-        try:
-            from sandboxes.providers.daytona import DaytonaProvider
-
-            daytona_result = await benchmark_provider(DaytonaProvider, "Daytona", runs=3)
-            if daytona_result:
-                results.append(daytona_result)
-        except Exception as e:
-            print(f"\n❌ Daytona error: {e}")
+    for provider in provider_specs:
+        provider_class = provider.load_class()
+        result = await benchmark_provider(provider.name, provider.display_name, provider_class, runs=3)
+        if result:
+            results.append(result)
 
     # Display comparison table
     print("\n" + "=" * 80)

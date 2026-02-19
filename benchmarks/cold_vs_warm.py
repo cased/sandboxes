@@ -9,10 +9,11 @@ from statistics import mean, median
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from benchmarks.provider_matrix import (
+    benchmark_image_for_provider,
+    discover_benchmark_providers,
+)
 from sandboxes import SandboxConfig
-from sandboxes.providers.daytona import DaytonaProvider
-from sandboxes.providers.e2b import E2BProvider
-from sandboxes.providers.modal import ModalProvider
 
 
 async def test_cold_startup(provider, provider_name: str, config: SandboxConfig) -> dict:
@@ -162,42 +163,40 @@ async def test_concurrent_warm(
     }
 
 
-async def test_provider_warmup_patterns(provider_class, provider_name: str):
+async def test_provider_warmup_patterns(provider_name: str, display_name: str, provider_class):
     """Test complete warmup patterns for a provider."""
     print(f"\n{'='*80}")
-    print(f"🔬 WARMUP ANALYSIS: {provider_name}")
+    print(f"🔬 WARMUP ANALYSIS: {display_name}")
     print(f"{'='*80}")
 
     try:
         # Initialize fresh provider
         provider = provider_class()
 
-        # Configure for provider
         config = SandboxConfig(labels={"test": "warmup"})
-        if provider_name == "Modal":
-            config.image = "python:3.11-slim"
-        elif provider_name == "Daytona":
-            config.image = "daytonaio/ai-test:0.2.3"
+        runtime_image = benchmark_image_for_provider(provider_name)
+        if runtime_image:
+            config.image = runtime_image
 
         # Test 1: Cold startup
-        cold_results = await test_cold_startup(provider, provider_name, config)
+        cold_results = await test_cold_startup(provider, display_name, config)
 
         # Small delay to ensure cold/warm separation
         await asyncio.sleep(2)
 
         # Test 2: Warm startup sequence
-        warm_results = await test_warm_startup(provider, provider_name, config, iterations=5)
+        warm_results = await test_warm_startup(provider, display_name, config, iterations=5)
 
         # Small delay
         await asyncio.sleep(1)
 
         # Test 3: Concurrent warmup
         concurrent_results = await test_concurrent_warm(
-            provider, provider_name, config, concurrency=3
+            provider, display_name, config, concurrency=3
         )
 
         # Analysis
-        print(f"\n📊 WARMUP ANALYSIS FOR {provider_name}")
+        print(f"\n📊 WARMUP ANALYSIS FOR {display_name}")
         print(f"{'='*60}")
 
         print("\nCold vs Warm Comparison:")
@@ -237,7 +236,7 @@ async def test_provider_warmup_patterns(provider_class, provider_name: str):
         print(f"  Concurrency efficiency: {concurrent_results['efficiency']:.1f}x")
 
         return {
-            "provider": provider_name,
+            "provider": display_name,
             "cold": cold_results,
             "warm": warm_results,
             "concurrent": concurrent_results,
@@ -247,7 +246,7 @@ async def test_provider_warmup_patterns(provider_class, provider_name: str):
         }
 
     except Exception as e:
-        print(f"❌ Error testing {provider_name}: {e}")
+        print(f"❌ Error testing {display_name}: {e}")
         return None
 
 
@@ -257,18 +256,16 @@ async def main():
     print("=" * 80)
     print("Testing startup patterns across providers...")
 
-    providers_to_test = [
-        (ModalProvider, "Modal"),
-        (E2BProvider, "E2B") if os.getenv("E2B_API_KEY") else None,
-        (DaytonaProvider, "Daytona") if os.getenv("DAYTONA_API_KEY") else None,
-    ]
-
-    # Filter out None values
-    providers_to_test = [p for p in providers_to_test if p is not None]
+    providers_to_test = discover_benchmark_providers(include_cloudflare=False)
 
     results = []
-    for provider_class, name in providers_to_test:
-        result = await test_provider_warmup_patterns(provider_class, name)
+    for provider in providers_to_test:
+        provider_class = provider.load_class()
+        result = await test_provider_warmup_patterns(
+            provider.name,
+            provider.display_name,
+            provider_class,
+        )
         if result:
             results.append(result)
 
