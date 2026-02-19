@@ -14,10 +14,12 @@ from typing import Any
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from benchmarks.provider_matrix import (
+    benchmark_image_for_provider,
+    benchmark_runtime_label,
+    discover_benchmark_providers,
+)
 from sandboxes import SandboxConfig
-from sandboxes.providers.daytona import DaytonaProvider
-from sandboxes.providers.e2b import E2BProvider
-from sandboxes.providers.modal import ModalProvider
 
 
 @dataclass
@@ -63,29 +65,16 @@ class SandboxBenchmark:
 
     def _init_providers(self):
         """Initialize available providers."""
-        # E2B
-        if os.getenv("E2B_API_KEY"):
-            try:
-                self.providers["e2b"] = E2BProvider()
-                print("✅ E2B provider initialized")
-            except Exception as e:
-                print(f"❌ E2B provider failed: {e}")
+        configured_providers = discover_benchmark_providers(include_cloudflare=False)
 
-        # Daytona
-        if os.getenv("DAYTONA_API_KEY"):
+        for provider in configured_providers:
             try:
-                self.providers["daytona"] = DaytonaProvider()
-                print("✅ Daytona provider initialized")
+                provider_class = provider.load_class()
+                self.providers[provider.name] = provider_class()
+                runtime = benchmark_runtime_label(provider.name)
+                print(f"✅ {provider.display_name} provider initialized ({runtime})")
             except Exception as e:
-                print(f"❌ Daytona provider failed: {e}")
-
-        # Modal
-        if os.path.exists(os.path.expanduser("~/.modal.toml")):
-            try:
-                self.providers["modal"] = ModalProvider()
-                print("✅ Modal provider initialized")
-            except Exception as e:
-                print(f"❌ Modal provider failed: {e}")
+                print(f"❌ {provider.display_name} provider failed: {e}")
 
     async def benchmark_create_sandbox(self, provider_name: str) -> list[BenchmarkResult]:
         """Benchmark sandbox creation."""
@@ -93,13 +82,7 @@ class SandboxBenchmark:
         results = []
 
         for i in range(self.iterations):
-            # Use Daytona image for E2B and Daytona providers
-            image = "daytonaio/ai-test:0.2.3" if provider_name in ["daytona", "e2b"] else None
-            if provider_name == "e2b":
-                # E2B uses template ID (template built from daytonaio/ai-test:0.2.3)
-                # To build your own: cd benchmarks/e2b-daytona-benchmark && e2b template build
-                # Then update this ID with the one from benchmarks/e2b-daytona-benchmark/e2b.toml
-                image = "5x6hvr4zwye07thwhpkd"
+            image = benchmark_image_for_provider(provider_name)
 
             config = SandboxConfig(
                 labels={"benchmark": "create", "iteration": str(i)},
@@ -144,12 +127,7 @@ class SandboxBenchmark:
         provider = self.providers[provider_name]
         results = []
 
-        # Use Daytona image for E2B and Daytona providers
-        image = "daytonaio/ai-test:0.2.3" if provider_name in ["daytona", "e2b"] else None
-        if provider_name == "e2b":
-            # E2B uses template ID (template built from daytonaio/ai-test:0.2.3)
-            # See benchmarks/e2b-daytona-benchmark/README.md for building your own
-            image = "5x6hvr4zwye07thwhpkd"
+        image = benchmark_image_for_provider(provider_name)
 
         # Create one sandbox for all iterations
         config = SandboxConfig(
@@ -212,12 +190,7 @@ class SandboxBenchmark:
         provider = self.providers[provider_name]
         results = []
 
-        # Use Daytona image for E2B and Daytona providers
-        image = "daytonaio/ai-test:0.2.3" if provider_name in ["daytona", "e2b"] else None
-        if provider_name == "e2b":
-            # E2B uses template ID (template built from daytonaio/ai-test:0.2.3)
-            # See benchmarks/e2b-daytona-benchmark/README.md for building your own
-            image = "5x6hvr4zwye07thwhpkd"
+        image = benchmark_image_for_provider(provider_name)
 
         labels = {"benchmark": "reuse", "session": "test123"}
         config = SandboxConfig(labels=labels, timeout_seconds=120, image=image)
@@ -477,6 +450,10 @@ class SandboxBenchmark:
         print("🚀 Starting Sandbox Provider Benchmarks")
         print(f"   Iterations per test: {self.iterations}")
         print(f"   Providers: {', '.join(self.providers.keys())}")
+
+        if not self.providers:
+            print("❌ No configured providers found.")
+            return {}
 
         # Run benchmarks for each provider
         all_results = []

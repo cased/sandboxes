@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Comprehensive benchmark for sandboxes library.
-Tests E2B, Modal, and Daytona providers with various realistic workloads.
+Tests configured providers with realistic workloads.
 
 Features:
 - Multiple test scenarios (Hello World, compute, I/O, package install)
@@ -15,7 +15,6 @@ https://github.com/nibzard/ai-sandbox-benchmark
 """
 
 import asyncio
-import os
 import sys
 import time
 from pathlib import Path
@@ -33,14 +32,16 @@ except ImportError:
     HAS_TABULATE = False
     print("⚠️  Install tabulate for better output: pip install tabulate")
 
+from benchmarks.provider_matrix import (
+    STANDARD_IMAGE,
+    benchmark_image_for_provider,
+    benchmark_runtime_label,
+    discover_benchmark_providers,
+    e2b_benchmark_template,
+    hopx_benchmark_template,
+    provider_configuration_hints,
+)
 from sandboxes import run
-
-# Standard image for apples-to-apples comparison (Modal/Daytona)
-# This image includes Python 3.13, numpy, requests, and many AI/ML packages
-# E2B uses their "code-interpreter" template (doesn't support arbitrary Docker images)
-# code-interpreter includes Python, npm, Jupyter, numpy, pandas, matplotlib, etc.
-STANDARD_IMAGE = "daytonaio/ai-test:0.2.3"
-
 
 # Test scenarios - from simple to complex
 TESTS = {
@@ -136,13 +137,9 @@ async def benchmark_provider(
             # Use comparable images for fair comparison
             kwargs = {"provider": provider_name}
             if use_standard_image:
-                if provider_name == "e2b":
-                    # E2B uses templates, not Docker images - use their code-interpreter template
-                    # Has Python, npm, Jupyter, and common ML packages (numpy, pandas, etc.)
-                    kwargs["image"] = "code-interpreter"
-                elif provider_name in ["modal", "daytona"]:
-                    # Modal and Daytona can use Docker Hub images
-                    kwargs["image"] = STANDARD_IMAGE
+                runtime_image = benchmark_image_for_provider(provider_name)
+                if runtime_image:
+                    kwargs["image"] = runtime_image
 
             result = await run(command, **kwargs)
             duration = (time.time() - start) * 1000  # Convert to ms
@@ -186,7 +183,10 @@ async def run_benchmarks(providers: list[str], use_standard_image: bool = True):
     print(f"Total tests: {len(TESTS)}")
     if use_standard_image:
         print(f"Modal/Daytona: {STANDARD_IMAGE}")
-        print("E2B: code-interpreter template (Python, npm, Jupyter, ML packages)")
+        if "e2b" in providers:
+            print(f"E2B: {e2b_benchmark_template()} template")
+        if "hopx" in providers:
+            print(f"Hopx: {hopx_benchmark_template()} template")
     print("=" * 80 + "\n")
 
     all_results = []
@@ -340,27 +340,17 @@ async def main():
     # Check which providers are available
     print("Checking available providers...")
 
-    providers_to_test = []
+    providers = discover_benchmark_providers(include_cloudflare=False)
+    providers_to_test = [provider.name for provider in providers]
 
-    # Check for API keys
-    if os.getenv("E2B_API_KEY"):
-        providers_to_test.append("e2b")
-        print("✓ E2B configured")
-
-    if os.getenv("MODAL_TOKEN_ID") or Path.home().joinpath(".modal.toml").exists():
-        providers_to_test.append("modal")
-        print("✓ Modal configured")
-
-    if os.getenv("DAYTONA_API_KEY"):
-        providers_to_test.append("daytona")
-        print("✓ Daytona configured")
+    for provider in providers:
+        print(f"✓ {provider.display_name} configured ({benchmark_runtime_label(provider.name)})")
 
     if not providers_to_test:
         print("\n❌ No providers configured!")
-        print("Set environment variables:")
-        print("  - E2B_API_KEY for E2B")
-        print("  - MODAL_TOKEN_ID for Modal (or run 'modal token set')")
-        print("  - DAYTONA_API_KEY for Daytona")
+        print("Configure at least one provider:")
+        for hint in provider_configuration_hints(include_cloudflare=False):
+            print(f"  {hint}")
         return
 
     # Run benchmarks

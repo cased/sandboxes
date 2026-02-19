@@ -1,103 +1,122 @@
 #!/usr/bin/env python
-"""Simple benchmark for Modal provider."""
+"""Quick benchmark smoke test for configured providers."""
 
 import asyncio
 import os
 import sys
 import time
-from statistics import mean, median, stdev
+from statistics import mean, median
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from benchmarks.provider_matrix import benchmark_image_for_provider, discover_benchmark_providers
 from sandboxes import SandboxConfig
-from sandboxes.providers.modal import ModalProvider
 
 
-async def benchmark_modal(runs=5):
-    """Benchmark Modal provider operations."""
-    provider = ModalProvider()
+async def benchmark_provider(provider_name: str, display_name: str, provider_class, runs: int = 3) -> dict | None:
+    """Run a quick create/exec/destroy smoke benchmark for a provider."""
+    try:
+        provider = provider_class()
+    except Exception as e:
+        print(f"\n❌ {display_name} initialization failed: {e}")
+        return None
 
     create_times = []
     execute_times = []
     destroy_times = []
     total_times = []
 
-    print(f"\n🔬 Running Modal Benchmark ({runs} iterations)")
+    print(f"\n🔬 Running {display_name} benchmark ({runs} iterations)")
     print("=" * 60)
 
     for i in range(runs):
-        print(f"\nRun {i+1}/{runs}:")
-
-        # Total operation time
         total_start = time.time()
+        try:
+            config = SandboxConfig(labels={"benchmark": "simple", "provider": provider_name, "run": str(i)})
+            runtime_image = benchmark_image_for_provider(provider_name)
+            if runtime_image:
+                config.image = runtime_image
 
-        # Create sandbox
-        start = time.time()
-        config = SandboxConfig(labels={"benchmark": f"run_{i}", "test": "modal_perf"})
-        sandbox = await provider.create_sandbox(config)
-        create_time = (time.time() - start) * 1000
-        create_times.append(create_time)
-        print(f"  ✅ Create: {create_time:.2f}ms - {sandbox.id}")
+            start = time.time()
+            sandbox = await provider.create_sandbox(config)
+            create_time = (time.time() - start) * 1000
+            create_times.append(create_time)
 
-        # Execute command
-        start = time.time()
-        result = await provider.execute_command(
-            sandbox.id,
-            'python3 -c \'import sys; print(f"Python {sys.version}"); print("Benchmark test complete")\'',
-        )
-        execute_time = (time.time() - start) * 1000
-        execute_times.append(execute_time)
-        print(f"  ✅ Execute: {execute_time:.2f}ms - Success: {result.success}")
+            start = time.time()
+            result = await provider.execute_command(
+                sandbox.id,
+                'python3 -c \'import sys; print(sys.version.split()[0])\'',
+            )
+            execute_time = (time.time() - start) * 1000
+            execute_times.append(execute_time)
 
-        # Destroy sandbox
-        start = time.time()
-        await provider.destroy_sandbox(sandbox.id)
-        destroy_time = (time.time() - start) * 1000
-        destroy_times.append(destroy_time)
-        print(f"  ✅ Destroy: {destroy_time:.2f}ms")
+            start = time.time()
+            await provider.destroy_sandbox(sandbox.id)
+            destroy_time = (time.time() - start) * 1000
+            destroy_times.append(destroy_time)
 
-        total_time = (time.time() - total_start) * 1000
-        total_times.append(total_time)
-        print(f"  ⏱️ Total: {total_time:.2f}ms")
+            total_time = (time.time() - total_start) * 1000
+            total_times.append(total_time)
 
-        # Small delay between runs
+            icon = "✅" if result.success else "❌"
+            print(
+                f"Run {i+1}: {icon} Create={create_time:.0f}ms "
+                f"Execute={execute_time:.0f}ms Destroy={destroy_time:.0f}ms Total={total_time:.0f}ms"
+            )
+        except Exception as e:
+            print(f"Run {i+1}: ❌ Failed - {str(e)[:100]}")
+
         if i < runs - 1:
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.2)
 
-    print("\n" + "=" * 60)
-    print("📊 RESULTS SUMMARY")
-    print("=" * 60)
-
-    # Calculate statistics
-    def print_stats(name, times):
-        if len(times) > 1:
-            print(f"\n{name}:")
-            print(f"  Mean:   {mean(times):.2f}ms")
-            print(f"  Median: {median(times):.2f}ms")
-            print(f"  Min:    {min(times):.2f}ms")
-            print(f"  Max:    {max(times):.2f}ms")
-            if len(times) > 2:
-                print(f"  StdDev: {stdev(times):.2f}ms")
-        else:
-            print(f"\n{name}: {times[0]:.2f}ms")
-
-    print_stats("CREATE SANDBOX", create_times)
-    print_stats("EXECUTE COMMAND", execute_times)
-    print_stats("DESTROY SANDBOX", destroy_times)
-    print_stats("TOTAL OPERATION", total_times)
-
-    print("\n" + "=" * 60)
-    print(f"🎯 AVERAGE THROUGHPUT: {1000 / mean(total_times):.2f} ops/sec")
-    print("=" * 60)
+    if not total_times:
+        return None
 
     return {
-        "create": {"times": create_times, "mean": mean(create_times)},
-        "execute": {"times": execute_times, "mean": mean(execute_times)},
-        "destroy": {"times": destroy_times, "mean": mean(destroy_times)},
-        "total": {"times": total_times, "mean": mean(total_times)},
+        "provider": display_name,
+        "runs": len(total_times),
+        "create_median": median(create_times),
+        "execute_median": median(execute_times),
+        "destroy_median": median(destroy_times),
+        "total_mean": mean(total_times),
+        "total_median": median(total_times),
     }
 
 
+async def main():
+    """Run quick benchmark for configured providers."""
+    providers = discover_benchmark_providers(include_cloudflare=False)
+    if not providers:
+        print("❌ No configured providers found.")
+        return
+
+    results = []
+    for provider in providers:
+        provider_class = provider.load_class()
+        result = await benchmark_provider(provider.name, provider.display_name, provider_class, runs=3)
+        if result:
+            results.append(result)
+
+    if not results:
+        print("\n❌ No successful provider runs.")
+        return
+
+    print("\n" + "=" * 80)
+    print("QUICK BENCHMARK SUMMARY")
+    print("=" * 80)
+    print(f"{'Provider':<12} {'Runs':<6} {'Create':<10} {'Execute':<10} {'Destroy':<10} {'Total':<10}")
+    print("-" * 80)
+    for result in sorted(results, key=lambda r: r["total_median"]):
+        print(
+            f"{result['provider']:<12} "
+            f"{result['runs']:<6} "
+            f"{result['create_median']:<10.0f} "
+            f"{result['execute_median']:<10.0f} "
+            f"{result['destroy_median']:<10.0f} "
+            f"{result['total_median']:<10.0f}"
+        )
+
+
 if __name__ == "__main__":
-    results = asyncio.run(benchmark_modal(5))
+    asyncio.run(main())
