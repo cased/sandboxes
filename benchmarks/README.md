@@ -50,6 +50,36 @@ python benchmarks/compare_providers.py
 
 ---
 
+### tti_parity_benchmark.py
+**TTI parity run (closest to computesdk-style methodology)**
+
+Measures TTI as:
+- `create_sandbox` (fresh sandbox)
+- first command (`echo "benchmark"`)
+- teardown not timed
+
+Runs providers sequentially and outputs JSON shaped for straightforward cross-referencing.
+
+**Usage:**
+```bash
+# Default providers: daytona,e2b,modal (10 iterations each)
+python benchmarks/tti_parity_benchmark.py
+
+# Custom run
+python benchmarks/tti_parity_benchmark.py \
+  --providers daytona,e2b,modal \
+  --iterations 10 \
+  --create-timeout 120 \
+  --command-timeout 30
+```
+
+**Notes:**
+- `ModalProvider` has a default image in this repo; optionally override with:
+  `--modal-image <image>` or `BENCHMARK_PARITY_MODAL_IMAGE`.
+- Results are written to `benchmarks/tti_parity_results_<timestamp>.json` unless `--output` is set.
+
+---
+
 ### simple_benchmark.py
 **Quick smoke test**
 
