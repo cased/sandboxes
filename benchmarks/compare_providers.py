@@ -35,6 +35,7 @@ async def benchmark_provider(
     for i in range(runs):
         print(f"\nRun {i+1}/{runs}:")
         total_start = time.time()
+        sandbox_id: str | None = None
 
         try:
             # Create sandbox
@@ -45,6 +46,7 @@ async def benchmark_provider(
                 config.image = runtime_image
 
             sandbox = await provider.create_sandbox(config)
+            sandbox_id = sandbox.id
             create_time = (time.time() - start) * 1000
             create_times.append(create_time)
             print(f"  ✅ Create: {create_time:.0f}ms")
@@ -60,7 +62,8 @@ async def benchmark_provider(
 
             # Destroy sandbox
             start = time.time()
-            await provider.destroy_sandbox(sandbox.id)
+            await provider.destroy_sandbox(sandbox_id)
+            sandbox_id = None
             destroy_time = (time.time() - start) * 1000
             destroy_times.append(destroy_time)
             print(f"  ✅ Destroy: {destroy_time:.0f}ms")
@@ -76,6 +79,13 @@ async def benchmark_provider(
         except Exception as e:
             print(f"  ❌ Error: {e}")
             continue
+        finally:
+            if sandbox_id:
+                try:
+                    await provider.destroy_sandbox(sandbox_id)
+                    print("  ⚠️  Cleanup succeeded after failure")
+                except Exception as cleanup_error:
+                    print(f"  ⚠️  Cleanup failed: {cleanup_error}")
 
     if not create_times:
         return None

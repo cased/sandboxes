@@ -5,6 +5,7 @@ import asyncio
 import os
 import sys
 import time
+from contextlib import suppress
 from statistics import mean, median
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,26 +29,40 @@ async def test_same_image_reuse(
 
     for i in range(iterations):
         config = SandboxConfig(image=image, labels={"test": "image_reuse", "iteration": str(i)})
+        sandbox_id: str | None = None
 
-        # Create
-        start = time.time()
-        sandbox = await provider.create_sandbox(config)
-        create_time = (time.time() - start) * 1000
-        create_times.append(create_time)
+        try:
+            # Create
+            start = time.time()
+            sandbox = await provider.create_sandbox(config)
+            sandbox_id = sandbox.id
+            create_time = (time.time() - start) * 1000
 
-        # Execute to test image readiness
-        start = time.time()
-        await provider.execute_command(sandbox.id, "python3 --version")
-        execute_time = (time.time() - start) * 1000
-        execute_times.append(execute_time)
+            # Execute to test image readiness
+            start = time.time()
+            await provider.execute_command(sandbox_id, "python3 --version")
+            execute_time = (time.time() - start) * 1000
 
-        # Destroy
-        start = time.time()
-        await provider.destroy_sandbox(sandbox.id)
-        destroy_time = (time.time() - start) * 1000
-        destroy_times.append(destroy_time)
+            # Destroy
+            start = time.time()
+            await provider.destroy_sandbox(sandbox_id)
+            sandbox_id = None
+            destroy_time = (time.time() - start) * 1000
 
-        print(f"   Run {i+1}: Create={create_time:.0f}ms Execute={execute_time:.0f}ms")
+            create_times.append(create_time)
+            execute_times.append(execute_time)
+            destroy_times.append(destroy_time)
+
+            print(f"   Run {i+1}: Create={create_time:.0f}ms Execute={execute_time:.0f}ms")
+        except Exception as e:
+            print(f"   Run {i+1}: ❌ Failed - {str(e)[:80]}")
+        finally:
+            if sandbox_id:
+                try:
+                    await provider.destroy_sandbox(sandbox_id)
+                    print(f"   Run {i+1}: ⚠️  Cleanup succeeded after failure")
+                except Exception as cleanup_error:
+                    print(f"   Run {i+1}: ⚠️  Cleanup failed - {str(cleanup_error)[:80]}")
 
         # Small delay
         await asyncio.sleep(0.5)
@@ -57,12 +72,15 @@ async def test_same_image_reuse(
         "create_times": create_times,
         "execute_times": execute_times,
         "destroy_times": destroy_times,
-        "create_median": median(create_times),
-        "execute_median": median(execute_times),
-        "first_create": create_times[0],
+        "create_median": median(create_times) if create_times else 0,
+        "execute_median": median(execute_times) if execute_times else 0,
+        "first_create": create_times[0] if create_times else 0,
         "subsequent_create_median": (
-            median(create_times[1:]) if len(create_times) > 1 else create_times[0]
+            median(create_times[1:])
+            if len(create_times) > 1
+            else (create_times[0] if create_times else 0)
         ),
+        "success_count": len(create_times),
     }
 
 
@@ -78,22 +96,25 @@ async def test_different_images(provider, provider_name: str, images: list[str])
         )
 
         print(f"   Testing image: {image}")
+        sandbox_id: str | None = None
 
         # Create
         start = time.time()
         try:
             sandbox = await provider.create_sandbox(config)
+            sandbox_id = sandbox.id
             create_time = (time.time() - start) * 1000
 
             # Execute to test image works
             start = time.time()
             result = await provider.execute_command(
-                sandbox.id, "python3 --version || python --version || echo 'No Python'"
+                sandbox_id, "python3 --version || python --version || echo 'No Python'"
             )
             execute_time = (time.time() - start) * 1000
 
             # Destroy
-            await provider.destroy_sandbox(sandbox.id)
+            await provider.destroy_sandbox(sandbox_id)
+            sandbox_id = None
 
             results.append(
                 {
@@ -120,6 +141,10 @@ async def test_different_images(provider, provider_name: str, images: list[str])
                     "error": str(e)[:100],
                 }
             )
+        finally:
+            if sandbox_id:
+                with suppress(Exception):
+                    await provider.destroy_sandbox(sandbox_id)
 
         # Delay between different images
         await asyncio.sleep(1)
@@ -137,27 +162,41 @@ async def test_concurrent_same_image(
         config = SandboxConfig(image=image, labels={"test": "concurrent_same", "index": str(index)})
 
         start_total = time.time()
+        sandbox_id: str | None = None
+        create_time = 0.0
+        execute_time = 0.0
+        error = None
 
-        # Create
-        start = time.time()
-        sandbox = await provider.create_sandbox(config)
-        create_time = (time.time() - start) * 1000
+        try:
+            # Create
+            start = time.time()
+            sandbox = await provider.create_sandbox(config)
+            sandbox_id = sandbox.id
+            create_time = (time.time() - start) * 1000
 
-        # Execute
-        start = time.time()
-        await provider.execute_command(sandbox.id, f"echo 'concurrent {index}'")
-        execute_time = (time.time() - start) * 1000
-
-        # Destroy
-        await provider.destroy_sandbox(sandbox.id)
+            # Execute
+            start = time.time()
+            await provider.execute_command(sandbox_id, f"echo 'concurrent {index}'")
+            execute_time = (time.time() - start) * 1000
+        except Exception as e:
+            error = str(e)
+        finally:
+            if sandbox_id:
+                try:
+                    await provider.destroy_sandbox(sandbox_id)
+                except Exception as cleanup_error:
+                    cleanup_message = f"cleanup failed: {cleanup_error}"
+                    error = f"{error} | {cleanup_message}" if error else cleanup_message
 
         total_time = (time.time() - start_total) * 1000
 
         return {
             "index": index,
+            "success": error is None,
             "create_time": create_time,
             "execute_time": execute_time,
             "total_time": total_time,
+            "error": error,
         }
 
     # Launch concurrent tasks
@@ -166,21 +205,32 @@ async def test_concurrent_same_image(
     results = await asyncio.gather(*tasks)
     wall_time = (time.time() - start_wall) * 1000
 
-    create_times = [r["create_time"] for r in results]
+    successful_results = [r for r in results if r["success"]]
+    create_times = [r["create_time"] for r in successful_results]
 
     for r in results:
-        print(
-            f"   Concurrent {r['index']}: Create={r['create_time']:.0f}ms Execute={r['execute_time']:.0f}ms"
-        )
+        if r["success"]:
+            print(
+                f"   Concurrent {r['index']}: Create={r['create_time']:.0f}ms Execute={r['execute_time']:.0f}ms"
+            )
+        else:
+            print(f"   Concurrent {r['index']}: ❌ Failed - {str(r['error'])[:80]}")
 
     print(f"   Wall clock: {wall_time:.0f}ms")
-    print(f"   Efficiency: {sum([r['total_time'] for r in results])/wall_time:.1f}x")
+    if successful_results and wall_time > 0:
+        efficiency = sum([r["total_time"] for r in successful_results]) / wall_time
+        print(f"   Efficiency: {efficiency:.1f}x")
+    else:
+        efficiency = 0
+        print("   Efficiency: n/a")
 
     return {
         "results": results,
         "create_times": create_times,
         "wall_time": wall_time,
-        "create_median": median(create_times),
+        "create_median": median(create_times) if create_times else 0,
+        "success_count": len(successful_results),
+        "efficiency": efficiency,
     }
 
 
@@ -236,6 +286,10 @@ async def test_provider_image_patterns(provider_name: str, display_name: str, pr
 
         if "same_image" in results:
             same = results["same_image"]
+            if not same["success_count"]:
+                print("\nSame Image Reuse:")
+                print("  No successful runs")
+                return results
             first_create = same["first_create"]
             subsequent_median = same["subsequent_create_median"]
             reuse_speedup = first_create / subsequent_median if subsequent_median > 0 else 1
@@ -256,10 +310,14 @@ async def test_provider_image_patterns(provider_name: str, display_name: str, pr
             print("\nConcurrent Same Image:")
             print(f"  Concurrent median: {concurrent['create_median']:.0f}ms")
             if "same_image" in results:
-                concurrent_vs_sequential = (
-                    results["same_image"]["subsequent_create_median"] / concurrent["create_median"]
-                )
-                print(f"  vs Sequential:     {concurrent_vs_sequential:.2f}x")
+                if concurrent["create_median"] > 0:
+                    concurrent_vs_sequential = (
+                        results["same_image"]["subsequent_create_median"]
+                        / concurrent["create_median"]
+                    )
+                    print(f"  vs Sequential:     {concurrent_vs_sequential:.2f}x")
+                else:
+                    print("  vs Sequential:     n/a")
 
         if "different_images" in results:
             different = results["different_images"]
@@ -326,6 +384,8 @@ async def main():
         for name, results in all_results:
             if "same_image" in results:
                 same = results["same_image"]
+                if not same["success_count"]:
+                    continue
                 first = same["first_create"]
                 reuse = same["subsequent_create_median"]
                 speedup = first / reuse if reuse > 0 else 1
@@ -346,6 +406,8 @@ async def main():
         for name, results in all_results:
             if "same_image" in results:
                 same = results["same_image"]
+                if not same["success_count"]:
+                    continue
                 speedup = (
                     same["first_create"] / same["subsequent_create_median"]
                     if same["subsequent_create_median"] > 0

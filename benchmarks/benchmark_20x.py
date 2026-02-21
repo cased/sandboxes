@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Run comprehensive 20-iteration benchmark with verification."""
+"""Run comprehensive 20-run concurrent benchmark with verification."""
 
 import asyncio
 import os
@@ -14,11 +14,15 @@ from sandboxes import SandboxConfig
 
 
 async def verify_and_benchmark(
-    provider_name: str, display_name: str, provider_class, runs: int = 20
+    provider_name: str,
+    display_name: str,
+    provider_class,
+    runs: int = 20,
+    concurrency: int = 20,
 ):
     """Benchmark provider with verification."""
     print(f"\n{'='*80}")
-    print(f"{display_name} - {runs} ITERATIONS")
+    print(f"{display_name} - {runs} RUNS ({concurrency} CONCURRENT)")
     print(f"{'='*80}")
 
     try:
@@ -36,71 +40,117 @@ async def verify_and_benchmark(
         initial_sandboxes = []
         print("   Could not list sandboxes")
 
-    # Track metrics
-    create_times = []
-    execute_times = []
-    destroy_times = []
-    total_times = []
-    created_ids = []
-    failed_runs = 0
+    runtime_image = benchmark_image_for_provider(provider_name)
+    run_concurrency = max(1, min(concurrency, runs))
+    semaphore = asyncio.Semaphore(run_concurrency)
 
-    print(f"\n🚀 Starting {runs} benchmark runs...")
-    print("-" * 60)
-
-    for i in range(runs):
-        # Show progress every 5 runs
-        if i > 0 and i % 5 == 0:
-            print(f"\n✅ Completed {i}/{runs} runs...")
-            print(f"   Created sandboxes so far: {len(created_ids)}")
-            print(f"   Average create time: {mean(create_times):.0f}ms")
-            print(f"   Average total time: {mean(total_times):.0f}ms")
-            print("-" * 60)
+    async def run_once(index: int) -> dict:
+        run_result = {
+            "index": index,
+            "success": False,
+            "sandbox_id": None,
+            "create_time": 0.0,
+            "execute_time": 0.0,
+            "destroy_time": 0.0,
+            "total_time": 0.0,
+            "error": None,
+        }
 
         total_start = time.time()
+        sandbox_id: str | None = None
 
         try:
-            # Create sandbox
-            start = time.time()
-            config = SandboxConfig(labels={"benchmark": f"{provider_name}_20x", "run": str(i + 1)})
-            runtime_image = benchmark_image_for_provider(provider_name)
+            config = SandboxConfig(
+                labels={"benchmark": f"{provider_name}_20x", "run": str(index + 1)}
+            )
             if runtime_image:
                 config.image = runtime_image
 
+            start = time.time()
             sandbox = await provider.create_sandbox(config)
-            create_time = (time.time() - start) * 1000
-            create_times.append(create_time)
-            created_ids.append(sandbox.id)
+            sandbox_id = sandbox.id
+            run_result["sandbox_id"] = sandbox_id
+            run_result["create_time"] = (time.time() - start) * 1000
 
-            # Execute command
             start = time.time()
-            await provider.execute_command(
-                sandbox.id, "python3 -c 'import sys; print(f\"Python {sys.version.split()[0]}\")'"
+            exec_result = await provider.execute_command(
+                sandbox_id, "python3 -c 'import sys; print(f\"Python {sys.version.split()[0]}\")'"
             )
-            execute_time = (time.time() - start) * 1000
-            execute_times.append(execute_time)
+            run_result["execute_time"] = (time.time() - start) * 1000
 
-            # Destroy sandbox
-            start = time.time()
-            await provider.destroy_sandbox(sandbox.id)
-            destroy_time = (time.time() - start) * 1000
-            destroy_times.append(destroy_time)
-
-            total_time = (time.time() - total_start) * 1000
-            total_times.append(total_time)
-
-            # Print individual run details for first 3 and last 2
-            if i < 3 or i >= runs - 2:
-                print(
-                    f"Run {i+1:2d}: Create={create_time:6.0f}ms Execute={execute_time:6.0f}ms "
-                    f"Destroy={destroy_time:6.0f}ms Total={total_time:6.0f}ms [{sandbox.id[:20]}...]"
-                )
-
+            if exec_result.success:
+                run_result["success"] = True
+            else:
+                run_result["error"] = f"Command failed (exit_code={exec_result.exit_code})"
         except Exception as e:
-            failed_runs += 1
-            print(f"Run {i+1:2d}: ❌ Failed - {str(e)[:50]}")
+            run_result["error"] = str(e)
+        finally:
+            if sandbox_id:
+                start = time.time()
+                try:
+                    await provider.destroy_sandbox(sandbox_id)
+                    run_result["destroy_time"] = (time.time() - start) * 1000
+                except Exception as cleanup_error:
+                    run_result["success"] = False
+                    cleanup_message = f"Cleanup failed: {cleanup_error}"
+                    if run_result["error"]:
+                        run_result["error"] = f"{run_result['error']} | {cleanup_message}"
+                    else:
+                        run_result["error"] = cleanup_message
 
-        # Small delay between runs
-        await asyncio.sleep(0.2)
+            run_result["total_time"] = (time.time() - total_start) * 1000
+
+        return run_result
+
+    async def run_with_limit(index: int) -> dict:
+        async with semaphore:
+            return await run_once(index)
+
+    print(f"\n🚀 Starting {runs} benchmark runs with concurrency={run_concurrency}...")
+    print("-" * 60)
+    start_wall = time.time()
+    tasks = [asyncio.create_task(run_with_limit(i)) for i in range(runs)]
+    run_results = []
+    for completed, task in enumerate(asyncio.as_completed(tasks), start=1):
+        run_result = await task
+        run_results.append(run_result)
+
+        if completed % 5 == 0 or completed == runs:
+            successful_so_far = [r for r in run_results if r["success"]]
+            print(f"\n✅ Completed {completed}/{runs} runs...")
+            print(
+                "   Created sandboxes so far: " f"{sum(1 for r in run_results if r['sandbox_id'])}"
+            )
+            if successful_so_far:
+                print(
+                    "   Average create time: "
+                    f"{mean([r['create_time'] for r in successful_so_far]):.0f}ms"
+                )
+                print(
+                    "   Average total time: "
+                    f"{mean([r['total_time'] for r in successful_so_far]):.0f}ms"
+                )
+            else:
+                print("   Average create time: n/a")
+                print("   Average total time: n/a")
+            print("-" * 60)
+
+    elapsed_wall = (time.time() - start_wall) * 1000
+
+    sorted_results = sorted(run_results, key=lambda r: r["index"])
+    for run_result in sorted_results:
+        index = run_result["index"]
+        if index < 3 or index >= runs - 2:
+            if run_result["success"]:
+                sandbox_id = run_result["sandbox_id"] or "unknown"
+                print(
+                    f"Run {index+1:2d}: Create={run_result['create_time']:6.0f}ms "
+                    f"Execute={run_result['execute_time']:6.0f}ms "
+                    f"Destroy={run_result['destroy_time']:6.0f}ms "
+                    f"Total={run_result['total_time']:6.0f}ms [{str(sandbox_id)[:20]}...]"
+                )
+            else:
+                print(f"Run {index+1:2d}: ❌ Failed - {str(run_result['error'])[:70]}")
 
     # Verify final sandbox count
     print("\n📊 Post-benchmark verification:")
@@ -111,30 +161,42 @@ async def verify_and_benchmark(
     except Exception:
         print("   Could not verify final count")
 
-    if not create_times:
+    successful_runs = [r for r in run_results if r["success"]]
+    failed_runs = runs - len(successful_runs)
+
+    create_times = [r["create_time"] for r in successful_runs]
+    execute_times = [r["execute_time"] for r in successful_runs]
+    destroy_times = [r["destroy_time"] for r in successful_runs]
+    total_times = [r["total_time"] for r in successful_runs]
+    created_ids = [r["sandbox_id"] for r in run_results if r["sandbox_id"]]
+
+    if not total_times:
         print(f"\n❌ All runs failed for {display_name}")
         return None
 
     # Calculate comprehensive statistics
-    print(f"\n📈 STATISTICS FOR {display_name} ({len(create_times)}/{runs} successful)")
+    print(f"\n📈 STATISTICS FOR {display_name} ({len(total_times)}/{runs} successful)")
     print("=" * 60)
 
-    def print_detailed_stats(name, times):
+    def print_detailed_stats(name: str, times: list[float]):
+        if not times:
+            print(f"\n{name}:")
+            print("  No successful samples")
+            return
+
+        print(f"\n{name}:")
+        print(f"  Count:    {len(times)} samples")
+        print(f"  Mean:     {mean(times):8.1f}ms")
+        print(f"  Median:   {median(times):8.1f}ms")
+        print(f"  Min:      {min(times):8.1f}ms")
+        print(f"  Max:      {max(times):8.1f}ms")
         if len(times) > 1:
             q = quantiles(times, n=4)  # Quartiles
-            print(f"\n{name}:")
-            print(f"  Count:    {len(times)} samples")
-            print(f"  Mean:     {mean(times):8.1f}ms")
-            print(f"  Median:   {median(times):8.1f}ms")
-            print(f"  Min:      {min(times):8.1f}ms")
             print(f"  Q1:       {q[0]:8.1f}ms")
             print(f"  Q3:       {q[2]:8.1f}ms")
-            print(f"  Max:      {max(times):8.1f}ms")
-            if len(times) > 2:
-                print(f"  StdDev:   {stdev(times):8.1f}ms")
-                print(
-                    f"  CV:       {(stdev(times)/mean(times)*100):8.1f}%"
-                )  # Coefficient of variation
+            print(f"  StdDev:   {stdev(times):8.1f}ms")
+            if mean(times) > 0:
+                print(f"  CV:       {(stdev(times)/mean(times)*100):8.1f}%")
 
     print_detailed_stats("CREATE", create_times)
     print_detailed_stats("EXECUTE", execute_times)
@@ -144,29 +206,33 @@ async def verify_and_benchmark(
     print("\n📦 SANDBOX TRACKING:")
     print(f"  Sandboxes created: {len(created_ids)}")
     print(f"  Failed runs: {failed_runs}")
-    print(f"  Success rate: {(len(created_ids)/runs)*100:.1f}%")
+    print(f"  Success rate: {(len(total_times)/runs)*100:.1f}%")
     print(f"  Sample IDs: {created_ids[:3] if created_ids else 'None'}")
+    print(f"  Wall clock for all runs: {elapsed_wall:.0f}ms")
 
     return {
         "name": display_name,
         "runs": runs,
-        "successful": len(create_times),
+        "successful": len(total_times),
         "failed": failed_runs,
-        "create_median": median(create_times) if create_times else 0,
-        "execute_median": median(execute_times) if execute_times else 0,
-        "destroy_median": median(destroy_times) if destroy_times else 0,
-        "total_median": median(total_times) if total_times else 0,
-        "throughput": 1000 / median(total_times) if total_times else 0,
+        "create_median": median(create_times),
+        "execute_median": median(execute_times),
+        "destroy_median": median(destroy_times),
+        "total_median": median(total_times),
+        "throughput": len(total_times) / (elapsed_wall / 1000) if elapsed_wall > 0 else 0,
     }
 
 
 async def main():
-    """Run 20-iteration benchmark for all providers."""
-    print("🔬 COMPREHENSIVE BENCHMARK - 20 ITERATIONS PER PROVIDER")
+    """Run 20-run concurrent benchmark for all providers."""
+    print("🔬 COMPREHENSIVE BENCHMARK - 20 RUNS PER PROVIDER")
     print("=" * 80)
     provider_specs = discover_benchmark_providers(include_cloudflare=False)
-    estimated_sandboxes = len(provider_specs) * 20
+    runs = 20
+    concurrency = int(os.getenv("BENCHMARK_20X_CONCURRENCY", str(runs)))
+    estimated_sandboxes = len(provider_specs) * runs
     print(f"This will create and destroy up to {estimated_sandboxes} sandboxes total.")
+    print(f"Per-provider concurrency: {concurrency}")
     print("Estimated time: provider-dependent")
 
     results = []
@@ -182,7 +248,8 @@ async def main():
             provider.name,
             provider.display_name,
             provider_class,
-            runs=20,
+            runs=runs,
+            concurrency=concurrency,
         )
         if result:
             results.append(result)
@@ -193,7 +260,7 @@ async def main():
     # Final comparison
     if results:
         print("\n" + "=" * 80)
-        print("🏆 FINAL COMPARISON (20 iterations each)")
+        print("🏆 FINAL COMPARISON (20 runs each)")
         print("=" * 80)
 
         print(

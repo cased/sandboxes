@@ -20,26 +20,32 @@ async def test_cold_startup(provider, provider_name: str, config: SandboxConfig)
     """Test completely cold startup - first sandbox after provider init."""
     print(f"\n🥶 Testing COLD startup for {provider_name}")
 
-    # Measure cold start
-    start = time.time()
-    sandbox = await provider.create_sandbox(config)
-    cold_create_time = (time.time() - start) * 1000
+    sandbox_id: str | None = None
+    cold_create_time = 0.0
+    cold_execute_time = 0.0
+    cold_destroy_time = 0.0
 
-    print(f"   Cold create: {cold_create_time:.0f}ms")
+    try:
+        # Measure cold start
+        start = time.time()
+        sandbox = await provider.create_sandbox(config)
+        sandbox_id = sandbox.id
+        cold_create_time = (time.time() - start) * 1000
 
-    # Quick execution test
-    start = time.time()
-    await provider.execute_command(sandbox.id, "echo 'cold test'")
-    cold_execute_time = (time.time() - start) * 1000
+        print(f"   Cold create: {cold_create_time:.0f}ms")
 
-    print(f"   Cold execute: {cold_execute_time:.0f}ms")
+        # Quick execution test
+        start = time.time()
+        await provider.execute_command(sandbox_id, "echo 'cold test'")
+        cold_execute_time = (time.time() - start) * 1000
 
-    # Destroy
-    start = time.time()
-    await provider.destroy_sandbox(sandbox.id)
-    cold_destroy_time = (time.time() - start) * 1000
-
-    print(f"   Cold destroy: {cold_destroy_time:.0f}ms")
+        print(f"   Cold execute: {cold_execute_time:.0f}ms")
+    finally:
+        if sandbox_id:
+            start = time.time()
+            await provider.destroy_sandbox(sandbox_id)
+            cold_destroy_time = (time.time() - start) * 1000
+            print(f"   Cold destroy: {cold_destroy_time:.0f}ms")
 
     return {
         "create": cold_create_time,
@@ -58,29 +64,49 @@ async def test_warm_startup(
     create_times = []
     execute_times = []
     destroy_times = []
+    total_times = []
 
     for i in range(iterations):
-        # Create
-        start = time.time()
-        sandbox = await provider.create_sandbox(config)
-        create_time = (time.time() - start) * 1000
-        create_times.append(create_time)
+        run_start = time.time()
+        sandbox_id: str | None = None
+        create_time = 0.0
+        execute_time = 0.0
+        destroy_time = 0.0
+        run_success = False
 
-        # Execute
-        start = time.time()
-        await provider.execute_command(sandbox.id, f"echo 'warm test {i+1}'")
-        execute_time = (time.time() - start) * 1000
-        execute_times.append(execute_time)
+        try:
+            # Create
+            start = time.time()
+            sandbox = await provider.create_sandbox(config)
+            sandbox_id = sandbox.id
+            create_time = (time.time() - start) * 1000
 
-        # Destroy
-        start = time.time()
-        await provider.destroy_sandbox(sandbox.id)
-        destroy_time = (time.time() - start) * 1000
-        destroy_times.append(destroy_time)
+            # Execute
+            start = time.time()
+            await provider.execute_command(sandbox_id, f"echo 'warm test {i+1}'")
+            execute_time = (time.time() - start) * 1000
+            run_success = True
+        except Exception as e:
+            print(f"   Run {i+1}: ❌ Failed - {str(e)[:80]}")
+        finally:
+            if sandbox_id:
+                start = time.time()
+                try:
+                    await provider.destroy_sandbox(sandbox_id)
+                    destroy_time = (time.time() - start) * 1000
+                except Exception as cleanup_error:
+                    run_success = False
+                    print(f"   Run {i+1}: ⚠️  Cleanup failed - {str(cleanup_error)[:80]}")
 
-        print(
-            f"   Run {i+1}: Create={create_time:.0f}ms Execute={execute_time:.0f}ms Destroy={destroy_time:.0f}ms"
-        )
+        if run_success:
+            create_times.append(create_time)
+            execute_times.append(execute_time)
+            destroy_times.append(destroy_time)
+            total_time = (time.time() - run_start) * 1000
+            total_times.append(total_time)
+            print(
+                f"   Run {i+1}: Create={create_time:.0f}ms Execute={execute_time:.0f}ms Destroy={destroy_time:.0f}ms"
+            )
 
         # Small delay to avoid rate limiting
         await asyncio.sleep(0.2)
@@ -89,12 +115,11 @@ async def test_warm_startup(
         "create_times": create_times,
         "execute_times": execute_times,
         "destroy_times": destroy_times,
-        "create_median": median(create_times),
-        "execute_median": median(execute_times),
-        "destroy_median": median(destroy_times),
-        "total_median": median(
-            [c + e + d for c, e, d in zip(create_times, execute_times, destroy_times)]
-        ),
+        "create_median": median(create_times) if create_times else 0,
+        "execute_median": median(execute_times) if execute_times else 0,
+        "destroy_median": median(destroy_times) if destroy_times else 0,
+        "total_median": median(total_times) if total_times else 0,
+        "success_count": len(total_times),
     }
 
 
@@ -106,30 +131,45 @@ async def test_concurrent_warm(
 
     async def create_execute_destroy(index: int):
         start_total = time.time()
+        sandbox_id: str | None = None
+        create_time = 0.0
+        execute_time = 0.0
+        destroy_time = 0.0
+        error = None
 
-        # Create
-        start = time.time()
-        sandbox = await provider.create_sandbox(config)
-        create_time = (time.time() - start) * 1000
+        try:
+            # Create
+            start = time.time()
+            sandbox = await provider.create_sandbox(config)
+            sandbox_id = sandbox.id
+            create_time = (time.time() - start) * 1000
 
-        # Execute
-        start = time.time()
-        await provider.execute_command(sandbox.id, f"echo 'concurrent test {index}'")
-        execute_time = (time.time() - start) * 1000
-
-        # Destroy
-        start = time.time()
-        await provider.destroy_sandbox(sandbox.id)
-        destroy_time = (time.time() - start) * 1000
+            # Execute
+            start = time.time()
+            await provider.execute_command(sandbox_id, f"echo 'concurrent test {index}'")
+            execute_time = (time.time() - start) * 1000
+        except Exception as e:
+            error = str(e)
+        finally:
+            if sandbox_id:
+                start = time.time()
+                try:
+                    await provider.destroy_sandbox(sandbox_id)
+                    destroy_time = (time.time() - start) * 1000
+                except Exception as cleanup_error:
+                    cleanup_message = f"cleanup failed: {cleanup_error}"
+                    error = f"{error} | {cleanup_message}" if error else cleanup_message
 
         total_time = (time.time() - start_total) * 1000
 
         return {
             "index": index,
+            "success": error is None,
             "create": create_time,
             "execute": execute_time,
             "destroy": destroy_time,
             "total": total_time,
+            "error": error,
         }
 
     # Launch concurrent tasks
@@ -139,27 +179,37 @@ async def test_concurrent_warm(
     elapsed_all = (time.time() - start_all) * 1000
 
     for result in results:
-        print(
-            f"   Concurrent {result['index']}: Create={result['create']:.0f}ms "
-            f"Execute={result['execute']:.0f}ms Destroy={result['destroy']:.0f}ms "
-            f"Total={result['total']:.0f}ms"
-        )
+        if result["success"]:
+            print(
+                f"   Concurrent {result['index']}: Create={result['create']:.0f}ms "
+                f"Execute={result['execute']:.0f}ms Destroy={result['destroy']:.0f}ms "
+                f"Total={result['total']:.0f}ms"
+            )
+        else:
+            print(f"   Concurrent {result['index']}: ❌ Failed - {str(result['error'])[:80]}")
 
-    create_times = [r["create"] for r in results]
-    execute_times = [r["execute"] for r in results]
-    total_times = [r["total"] for r in results]
+    successful_results = [r for r in results if r["success"]]
+    create_times = [r["create"] for r in successful_results]
+    execute_times = [r["execute"] for r in successful_results]
+    total_times = [r["total"] for r in successful_results]
+    efficiency = (sum(total_times) / elapsed_all) if elapsed_all > 0 and total_times else 0
 
     print(f"   Wall clock time: {elapsed_all:.0f}ms")
-    print(f"   Avg individual: {mean(total_times):.0f}ms")
-    print(f"   Efficiency: {(sum(total_times)/elapsed_all):.1f}x")
+    if total_times:
+        print(f"   Avg individual: {mean(total_times):.0f}ms")
+        print(f"   Efficiency: {efficiency:.1f}x")
+    else:
+        print("   Avg individual: n/a")
+        print("   Efficiency: n/a")
 
     return {
         "create_times": create_times,
         "execute_times": execute_times,
-        "create_median": median(create_times),
-        "execute_median": median(execute_times),
+        "create_median": median(create_times) if create_times else 0,
+        "execute_median": median(execute_times) if execute_times else 0,
         "wall_clock": elapsed_all,
-        "efficiency": sum(total_times) / elapsed_all,
+        "efficiency": efficiency,
+        "success_count": len(successful_results),
     }
 
 
@@ -186,6 +236,9 @@ async def test_provider_warmup_patterns(provider_name: str, display_name: str, p
 
         # Test 2: Warm startup sequence
         warm_results = await test_warm_startup(provider, display_name, config, iterations=5)
+        if not warm_results["success_count"]:
+            print(f"❌ No successful warm startup runs for {display_name}")
+            return None
 
         # Small delay
         await asyncio.sleep(1)
@@ -222,8 +275,14 @@ async def test_provider_warmup_patterns(provider_name: str, display_name: str, p
         print(f"  Execute: {cold_execute:.0f}ms → {warm_execute:.0f}ms ({execute_speedup:.2f}x)")
 
         # Variance analysis
-        create_variance = max(warm_results["create_times"]) - min(warm_results["create_times"])
-        execute_variance = max(warm_results["execute_times"]) - min(warm_results["execute_times"])
+        create_variance = 0
+        execute_variance = 0
+        if len(warm_results["create_times"]) > 1:
+            create_variance = max(warm_results["create_times"]) - min(warm_results["create_times"])
+        if len(warm_results["execute_times"]) > 1:
+            execute_variance = max(warm_results["execute_times"]) - min(
+                warm_results["execute_times"]
+            )
 
         print("\nWarm Performance Stability:")
         print(f"  Create variance: {create_variance:.0f}ms")

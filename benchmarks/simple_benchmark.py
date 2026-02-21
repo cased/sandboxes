@@ -34,6 +34,7 @@ async def benchmark_provider(
 
     for i in range(runs):
         total_start = time.time()
+        sandbox_id: str | None = None
         try:
             config = SandboxConfig(
                 labels={"benchmark": "simple", "provider": provider_name, "run": str(i)}
@@ -44,6 +45,7 @@ async def benchmark_provider(
 
             start = time.time()
             sandbox = await provider.create_sandbox(config)
+            sandbox_id = sandbox.id
             create_time = (time.time() - start) * 1000
             create_times.append(create_time)
 
@@ -56,7 +58,8 @@ async def benchmark_provider(
             execute_times.append(execute_time)
 
             start = time.time()
-            await provider.destroy_sandbox(sandbox.id)
+            await provider.destroy_sandbox(sandbox_id)
+            sandbox_id = None
             destroy_time = (time.time() - start) * 1000
             destroy_times.append(destroy_time)
 
@@ -70,6 +73,13 @@ async def benchmark_provider(
             )
         except Exception as e:
             print(f"Run {i+1}: ❌ Failed - {str(e)[:100]}")
+        finally:
+            if sandbox_id:
+                try:
+                    await provider.destroy_sandbox(sandbox_id)
+                    print(f"Run {i+1}: ⚠️  Cleanup succeeded after failure")
+                except Exception as cleanup_error:
+                    print(f"Run {i+1}: ⚠️  Cleanup failed - {str(cleanup_error)[:100]}")
 
         if i < runs - 1:
             await asyncio.sleep(0.2)
