@@ -1,124 +1,92 @@
 # Sandboxes Benchmarks
 
-Benchmark suite for comparing sandbox provider performance.
+Benchmark suite for comparing sandbox provider performance with statistically meaningful results.
 
-## Available Benchmarks
-
-### tti_parity_benchmark.py (PRIMARY)
-**TTI measurement with proper statistical analysis**
-
-Measures Time to Interactive (TTI): `create_sandbox` + first command execution.
-
-- **50 iterations** by default for statistical significance
-- **3 warmup runs** discarded to eliminate outliers
-- **Percentiles**: p50, p75, p99, p99.9
-- Fresh cold-start sandbox each iteration
+## Quick Start
 
 ```bash
+# Run the primary TTI benchmark (recommended)
 python benchmarks/tti_parity_benchmark.py
-python benchmarks/tti_parity_benchmark.py --providers daytona,e2b,modal --iterations 100
+
+# Quick 5-iteration test
+python benchmarks/tti_parity_benchmark.py --iterations 5 --warmup 1
 ```
 
----
+## Methodology
 
-### comprehensive_benchmark.py
-**Diverse workload comparison**
+Our primary benchmark (`tti_parity_benchmark.py`) is designed for statistically meaningful results:
 
-Tests multiple scenarios: Hello World, Prime Calculation, File I/O (1000 files), pip install, NumPy FFT.
+- **50 iterations** by default for reliable percentile calculations
+- **3 warmup runs** discarded to eliminate one-time initialization costs
+- **Full percentiles**: p50, p75, p99, p99.9 to expose tail latencies
+- **Fresh sandboxes**: each iteration creates a new sandbox, no pooling
+
+## Benchmarks
+
+| Benchmark | Purpose | When to Use |
+|-----------|---------|-------------|
+| `tti_parity_benchmark.py` | TTI measurement | **Start here.** Primary benchmark for provider comparison. |
+| `comprehensive_benchmark.py` | Diverse workloads | Testing different workload types (CPU, I/O, packages). |
+| `compare_providers.py` | Lifecycle breakdown | Understanding create/execute/destroy overhead. |
+| `benchmark_20x.py` | Throughput | Testing concurrent sandbox creation. |
+| `cold_vs_warm.py` | Variance analysis | Investigating startup consistency. |
+| `image_reuse.py` | Caching behavior | Understanding image/template caching. |
+
+## Primary Benchmark: TTI
+
+TTI (Time to Interactive) measures what users care about: how long until they can run code.
+
+```
+TTI = create_sandbox() + first command execution
+```
+
+Teardown is not included since it happens after the user's work is done.
+
+### Usage
 
 ```bash
-python benchmarks/comprehensive_benchmark.py
+# Full run (50 iterations + 3 warmup per provider)
+python benchmarks/tti_parity_benchmark.py
+
+# Specific providers
+python benchmarks/tti_parity_benchmark.py --providers daytona,e2b
+
+# More iterations for better p99.9
+python benchmarks/tti_parity_benchmark.py --iterations 100 --warmup 5
 ```
 
----
+### Output
 
-### compare_providers.py
-**Lifecycle breakdown**
-
-Detailed timing for each phase: create, execute, destroy.
-
-```bash
-python benchmarks/compare_providers.py
+```
+Provider     | p50 (s)    | p75 (s)    | p99 (s)    | p99.9 (s)  | Min (s)    | Max (s)    | Status
+-------------+------------+------------+------------+------------+------------+------------+-----------
+daytona      | 0.36       | 0.49       | 0.50       | 0.50       | 0.35       | 0.50       | 50/50 OK
+e2b          | 0.47       | 0.51       | 0.57       | 0.57       | 0.34       | 0.57       | 50/50 OK
+modal        | 2.50       | 2.80       | 3.17       | 3.18       | 2.42       | 3.18       | 50/50 OK
 ```
 
----
-
-### benchmark_20x.py
-**Throughput test**
-
-20 concurrent sandbox operations to measure parallelism.
-
-```bash
-python benchmarks/benchmark_20x.py
-```
-
----
-
-### cold_vs_warm.py
-**Startup variance analysis**
-
-Compares first run vs subsequent runs performance.
-
-```bash
-python benchmarks/cold_vs_warm.py
-```
-
----
-
-### image_reuse.py
-**Image caching behavior**
-
-Tests how providers cache images/templates across sandbox creations.
-
-```bash
-python benchmarks/image_reuse.py
-```
-
----
+Results are also saved to `tti_parity_results_<timestamp>.json`.
 
 ## Configuration
 
-All benchmarks auto-detect available providers based on environment variables:
+Benchmarks auto-detect configured providers:
 
-- **Daytona**: Set `DAYTONA_API_KEY`
-- **E2B**: Set `E2B_API_KEY`
-- **Sprites**: Set `SPRITES_TOKEN` or run `sprite login`
-- **Hopx**: Set `HOPX_API_KEY`
-- **Vercel**: Set `VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, and `VERCEL_TEAM_ID`
-- **Modal**: Run `modal token set` or set `MODAL_TOKEN_ID`
+| Provider | Configuration |
+|----------|--------------|
+| Daytona | `DAYTONA_API_KEY` |
+| E2B | `E2B_API_KEY` |
+| Modal | `modal token set` or `MODAL_TOKEN_ID` |
+| Hopx | `HOPX_API_KEY` |
+| Sprites | `SPRITES_TOKEN` or `sprite login` |
 
-## Standard Image
+## Methodology Notes
 
-For apples-to-apples comparison, benchmarks use comparable environments:
+**Apples-to-apples comparison**: Benchmarks use comparable environments where possible:
+- Modal/Daytona: `daytonaio/ai-test:0.2.3` (Python 3.13 + common packages)
+- E2B/Hopx: `code-interpreter` template
 
-- **Modal/Daytona**: `daytonaio/ai-test:0.2.3`
-  - Python 3.13, numpy, requests, anthropic, cohere, beautifulsoup4, and many AI/ML packages
-  - Both providers support arbitrary Docker images
+**Fresh sandboxes**: Each iteration creates a new sandbox. No sandbox pooling or reuse.
 
-- **E2B**: `code-interpreter` template by default
-  - Python, npm, Jupyter, and common ML packages (numpy, pandas, matplotlib, etc.)
-  - E2B uses templates instead of Docker images
-  - Benchmarks prefer `E2B_BENCHMARK_TEMPLATE`, then `benchmarks/e2b-daytona-benchmark/e2b.toml`, then `code-interpreter`
-  - Override with `E2B_BENCHMARK_TEMPLATE`
-  - If you see `Template is not compatible with secured access`, set `E2B_BENCHMARK_TEMPLATE` to a secured-access compatible template ID
+**Sequential execution**: Providers are tested one at a time to avoid interference.
 
-- **Hopx**: `code-interpreter` template by default
-  - Override with `HOPX_BENCHMARK_TEMPLATE`
-
-- **Sprites/Vercel**:
-  - Benchmarks use provider defaults for runtime/image behavior
-
-Cloudflare provider benchmarks are intentionally excluded by default.
-
-## Contributing
-
-When adding new benchmarks:
-1. Keep provider discovery centralized (see `benchmarks/provider_matrix.py`)
-2. Use standardized runtime hints for fair comparisons where possible
-3. Include statistical analysis (mean, stddev)
-4. Add error handling and detailed reporting
-5. Update this README
-
-## License
-
-Comprehensive benchmark based on [ai-sandbox-benchmark](https://github.com/nibzard/ai-sandbox-benchmark) - Apache 2.0 License
+**Cloudflare excluded**: The Cloudflare provider has different semantics and is excluded by default.
