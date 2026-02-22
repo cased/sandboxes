@@ -151,12 +151,18 @@ async def _run_provider(
     modal_image: str | None,
 ) -> dict[str, Any]:
     total_runs = warmup_iterations + iterations
-    print(f"\n--- Benchmarking: {provider_name} ({warmup_iterations} warmup + {iterations} measured) ---")
+    print(
+        f"\n--- Benchmarking: {provider_name} ({warmup_iterations} warmup + {iterations} measured) ---"
+    )
     results: list[TimingResult] = []
 
     for i in range(total_runs):
         is_warmup = i < warmup_iterations
-        run_label = f"Warmup {i + 1}/{warmup_iterations}" if is_warmup else f"Iteration {i - warmup_iterations + 1}/{iterations}"
+        run_label = (
+            f"Warmup {i + 1}/{warmup_iterations}"
+            if is_warmup
+            else f"Iteration {i - warmup_iterations + 1}/{iterations}"
+        )
         print(f"  {run_label}...")
         result = await _run_iteration(
             provider=provider,
