@@ -12,24 +12,26 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import os
 import statistics
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from benchmarks.provider_matrix import PROVIDERS, PROVIDER_CONFIGURATION_HINTS
+from benchmarks.provider_matrix import PROVIDER_CONFIGURATION_HINTS, PROVIDERS
 from sandboxes import SandboxConfig
 
 DEFAULT_PROVIDERS = ("daytona", "e2b", "modal")
-DEFAULT_ITERATIONS = 10
+DEFAULT_ITERATIONS = 50
+DEFAULT_WARMUP_ITERATIONS = 3
 DEFAULT_CREATE_TIMEOUT_SECONDS = 120
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 30
 DEFAULT_DESTROY_TIMEOUT_SECONDS = 15
@@ -47,16 +49,45 @@ class TimingResult:
         return data
 
 
+def _percentile(sorted_values: list[float], p: float) -> float:
+    """Calculate percentile using linear interpolation (same as numpy)."""
+    if not sorted_values:
+        return 0.0
+    n = len(sorted_values)
+    if n == 1:
+        return sorted_values[0]
+    k = (n - 1) * p / 100
+    f = int(k)
+    c = f + 1 if f + 1 < n else f
+    return sorted_values[f] + (k - f) * (sorted_values[c] - sorted_values[f])
+
+
 def _compute_stats(values: list[float]) -> dict[str, float]:
     if not values:
-        return {"min": 0.0, "max": 0.0, "median": 0.0, "avg": 0.0}
+        return {
+            "min": 0.0,
+            "max": 0.0,
+            "avg": 0.0,
+            "stddev": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "p99": 0.0,
+            "p999": 0.0,
+        }
 
     sorted_values = sorted(values)
+    avg = statistics.mean(sorted_values)
+    stddev = statistics.stdev(sorted_values) if len(sorted_values) > 1 else 0.0
+
     return {
         "min": sorted_values[0],
         "max": sorted_values[-1],
-        "median": statistics.median(sorted_values),
-        "avg": statistics.mean(sorted_values),
+        "avg": avg,
+        "stddev": stddev,
+        "p50": _percentile(sorted_values, 50),
+        "p75": _percentile(sorted_values, 75),
+        "p99": _percentile(sorted_values, 99),
+        "p999": _percentile(sorted_values, 99.9),
     }
 
 
@@ -103,29 +134,30 @@ async def _run_iteration(
         return TimingResult(tti_ms=0.0, error=str(exc))
     finally:
         if sandbox_id:
-            try:
+            with contextlib.suppress(Exception):
                 await asyncio.wait_for(
                     provider.destroy_sandbox(sandbox_id),
                     timeout=DEFAULT_DESTROY_TIMEOUT_SECONDS,
                 )
-            except Exception:
-                # Ignore teardown errors so one failed cleanup does not poison the run.
-                pass
 
 
 async def _run_provider(
     provider_name: str,
     provider: Any,
     iterations: int,
+    warmup_iterations: int,
     create_timeout: int,
     command_timeout: int,
     modal_image: str | None,
 ) -> dict[str, Any]:
-    print(f"\n--- Benchmarking: {provider_name} ({iterations} iterations) ---")
+    total_runs = warmup_iterations + iterations
+    print(f"\n--- Benchmarking: {provider_name} ({warmup_iterations} warmup + {iterations} measured) ---")
     results: list[TimingResult] = []
 
-    for i in range(iterations):
-        print(f"  Iteration {i + 1}/{iterations}...")
+    for i in range(total_runs):
+        is_warmup = i < warmup_iterations
+        run_label = f"Warmup {i + 1}/{warmup_iterations}" if is_warmup else f"Iteration {i - warmup_iterations + 1}/{iterations}"
+        print(f"  {run_label}...")
         result = await _run_iteration(
             provider=provider,
             provider_name=provider_name,
@@ -134,12 +166,16 @@ async def _run_provider(
             command_timeout=command_timeout,
             modal_image=modal_image,
         )
-        results.append(result)
+
+        # Only record non-warmup results
+        if not is_warmup:
+            results.append(result)
 
         if result.error:
             print(f"    FAILED: {result.error}")
         else:
-            print(f"    TTI: {(result.tti_ms / 1000):.2f}s")
+            suffix = " (warmup, discarded)" if is_warmup else ""
+            print(f"    TTI: {(result.tti_ms / 1000):.2f}s{suffix}")
 
     successful = [r.tti_ms for r in results if not r.error]
     payload: dict[str, Any] = {
@@ -155,14 +191,17 @@ async def _run_provider(
     return payload
 
 
-def _print_results_table(results: list[dict[str, Any]]) -> None:
+def _print_results_table(results: list[dict[str, Any]], iterations: int, warmup: int) -> None:
     name_width = 12
-    col_width = 14
-    table_width = name_width + (col_width * 3) + 25
+    col_width = 10
+    table_width = name_width + (col_width * 7) + 40
 
     header = [
         "Provider".ljust(name_width),
-        "TTI (s)".ljust(col_width),
+        "p50 (s)".ljust(col_width),
+        "p75 (s)".ljust(col_width),
+        "p99 (s)".ljust(col_width),
+        "p99.9 (s)".ljust(col_width),
         "Min (s)".ljust(col_width),
         "Max (s)".ljust(col_width),
         "Status".ljust(10),
@@ -172,24 +211,31 @@ def _print_results_table(results: list[dict[str, Any]]) -> None:
         "-" * col_width,
         "-" * col_width,
         "-" * col_width,
+        "-" * col_width,
+        "-" * col_width,
+        "-" * col_width,
         "-" * 10,
     ]
 
     print("\n" + "=" * table_width)
     print("  TTI PARITY BENCHMARK RESULTS")
+    print(f"  {iterations} iterations per provider, {warmup} warmup (discarded)")
     print("=" * table_width)
     print(" | ".join(header))
     print("-+-".join(separator))
 
     sorted_results = sorted(
         results,
-        key=lambda r: (bool(r.get("skipped")), r["summary"]["ttiMs"]["median"]),
+        key=lambda r: (bool(r.get("skipped")), r["summary"]["ttiMs"]["p50"]),
     )
 
     for result in sorted_results:
         if result.get("skipped"):
             row = [
                 result["provider"].ljust(name_width),
+                "--".ljust(col_width),
+                "--".ljust(col_width),
+                "--".ljust(col_width),
                 "--".ljust(col_width),
                 "--".ljust(col_width),
                 "--".ljust(col_width),
@@ -203,14 +249,18 @@ def _print_results_table(results: list[dict[str, Any]]) -> None:
         total = len(result["iterations"])
         row = [
             result["provider"].ljust(name_width),
-            f"{summary['median'] / 1000:.2f}".ljust(col_width),
+            f"{summary['p50'] / 1000:.2f}".ljust(col_width),
+            f"{summary['p75'] / 1000:.2f}".ljust(col_width),
+            f"{summary['p99'] / 1000:.2f}".ljust(col_width),
+            f"{summary['p999'] / 1000:.2f}".ljust(col_width),
             f"{summary['min'] / 1000:.2f}".ljust(col_width),
             f"{summary['max'] / 1000:.2f}".ljust(col_width),
             f"{successful}/{total} OK".ljust(10),
         ]
         print(" | ".join(row))
 
-    print("\nTTI = create_sandbox + first command execution (fresh sandbox each iteration).\n")
+    print("\nTTI = Time to Interactive (create_sandbox + first command execution)")
+    print("Each iteration uses a fresh cold-start sandbox.\n")
 
 
 def _provider_setup_issues(selected_providers: list[str]) -> list[dict[str, Any]]:
@@ -224,7 +274,7 @@ def _provider_setup_issues(selected_providers: list[str]) -> list[dict[str, Any]
                 {
                     "provider": name,
                     "iterations": [],
-                    "summary": {"ttiMs": {"min": 0.0, "max": 0.0, "median": 0.0, "avg": 0.0}},
+                    "summary": {"ttiMs": _compute_stats([])},
                     "skipped": True,
                     "skipReason": f"Unknown provider: {name}",
                 }
@@ -237,7 +287,7 @@ def _provider_setup_issues(selected_providers: list[str]) -> list[dict[str, Any]
                 {
                     "provider": name,
                     "iterations": [],
-                    "summary": {"ttiMs": {"min": 0.0, "max": 0.0, "median": 0.0, "avg": 0.0}},
+                    "summary": {"ttiMs": _compute_stats([])},
                     "skipped": True,
                     "skipReason": f"Not configured ({hint})",
                 }
@@ -257,7 +307,13 @@ async def main() -> None:
         "--iterations",
         type=int,
         default=DEFAULT_ITERATIONS,
-        help=f"Iterations per provider (default: {DEFAULT_ITERATIONS})",
+        help=f"Measured iterations per provider (default: {DEFAULT_ITERATIONS})",
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=DEFAULT_WARMUP_ITERATIONS,
+        help=f"Warmup iterations to discard (default: {DEFAULT_WARMUP_ITERATIONS})",
     )
     parser.add_argument(
         "--create-timeout",
@@ -290,9 +346,9 @@ async def main() -> None:
     registry = _provider_registry()
 
     print("TTI Parity Benchmark")
-    print(f"Date: {datetime.now(timezone.utc).isoformat()}")
+    print(f"Date: {datetime.now(UTC).isoformat()}")
     print(f"Providers: {', '.join(selected_providers)}")
-    print(f"Iterations per provider: {args.iterations}")
+    print(f"Iterations per provider: {args.iterations} (+ {args.warmup} warmup)")
     print(
         f"Timeouts: create={args.create_timeout}s, first_command={args.command_timeout}s, "
         f"destroy={DEFAULT_DESTROY_TIMEOUT_SECONDS}s"
@@ -319,7 +375,7 @@ async def main() -> None:
                 {
                     "provider": provider_name,
                     "iterations": [],
-                    "summary": {"ttiMs": {"min": 0.0, "max": 0.0, "median": 0.0, "avg": 0.0}},
+                    "summary": {"ttiMs": _compute_stats([])},
                     "skipped": True,
                     "skipReason": f"Initialization failed: {exc}",
                 }
@@ -330,15 +386,16 @@ async def main() -> None:
             provider_name=provider_name,
             provider=provider,
             iterations=args.iterations,
+            warmup_iterations=args.warmup,
             create_timeout=args.create_timeout,
             command_timeout=args.command_timeout,
             modal_image=args.modal_image,
         )
         results.append(provider_result)
 
-    _print_results_table(results)
+    _print_results_table(results, args.iterations, args.warmup)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     output_path = (
         Path(args.output)
         if args.output
@@ -346,10 +403,11 @@ async def main() -> None:
     )
     payload = {
         "version": "1.0",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "config": {
             "providers": selected_providers,
             "iterations": args.iterations,
+            "warmupIterations": args.warmup,
             "createTimeoutSeconds": args.create_timeout,
             "commandTimeoutSeconds": args.command_timeout,
             "destroyTimeoutSeconds": DEFAULT_DESTROY_TIMEOUT_SECONDS,

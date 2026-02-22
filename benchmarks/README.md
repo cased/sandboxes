@@ -51,26 +51,39 @@ python benchmarks/compare_providers.py
 ---
 
 ### tti_parity_benchmark.py
-**TTI parity run (closest to computesdk-style methodology)**
+**TTI parity run with proper statistical analysis**
 
-Measures TTI as:
-- `create_sandbox` (fresh sandbox)
+Measures TTI (Time to Interactive) as:
+- `create_sandbox` (fresh cold-start sandbox)
 - first command (`echo "benchmark"`)
 - teardown not timed
 
-Runs providers sequentially and outputs JSON shaped for straightforward cross-referencing.
+**Features:**
+- **50 iterations** by default (vs 10 in computesdk) for statistical significance
+- **3 warmup runs** discarded to eliminate cold-start outliers
+- **Percentiles**: p50, p75, p99, p99.9 (not just median/min/max)
+- **Standard deviation** for variance analysis
+- Sequential provider execution to avoid cross-provider interference
 
 **Usage:**
 ```bash
-# Default providers: daytona,e2b,modal (10 iterations each)
+# Default: 50 iterations + 3 warmup per provider
 python benchmarks/tti_parity_benchmark.py
 
 # Custom run
 python benchmarks/tti_parity_benchmark.py \
   --providers daytona,e2b,modal \
-  --iterations 10 \
+  --iterations 100 \
+  --warmup 5 \
   --create-timeout 120 \
   --command-timeout 30
+```
+
+**Output:**
+```
+Provider     | p50 (s)    | p75 (s)    | p99 (s)    | p99.9 (s)  | Min (s)    | Max (s)    | Status
+-------------+------------+------------+------------+------------+------------+------------+-----------
+daytona      | 0.59       | 0.61       | 0.63       | 0.63       | 0.55       | 0.63       | 50/50 OK
 ```
 
 **Notes:**
