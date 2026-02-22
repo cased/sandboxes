@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""TTI parity benchmark aligned with computesdk/benchmarks methodology.
+"""Time to First Command (TTFC) benchmark.
 
-This script measures Time to Interactive (TTI) as:
+Measures the time from create_sandbox() to first command completion:
   create_sandbox -> first command execution
 
 The benchmark intentionally runs providers sequentially and creates a fresh
@@ -109,7 +109,7 @@ async def _run_iteration(
     try:
         config = SandboxConfig(
             labels={
-                "benchmark": "tti_parity",
+                "benchmark": "ttfc",
                 "provider": provider_name,
                 "iteration": str(iteration + 1),
             },
@@ -175,7 +175,7 @@ async def _run_provider(
             print(f"    FAILED: {result.error}")
         else:
             suffix = " (warmup, discarded)" if is_warmup else ""
-            print(f"    TTI: {(result.tti_ms / 1000):.2f}s{suffix}")
+            print(f"    TTFC: {(result.tti_ms / 1000):.2f}s{suffix}")
 
     successful = [r.tti_ms for r in results if not r.error]
     payload: dict[str, Any] = {
@@ -218,7 +218,7 @@ def _print_results_table(results: list[dict[str, Any]], iterations: int, warmup:
     ]
 
     print("\n" + "=" * table_width)
-    print("  TTI PARITY BENCHMARK RESULTS")
+    print("  TIME TO FIRST COMMAND BENCHMARK RESULTS")
     print(f"  {iterations} iterations per provider, {warmup} warmup (discarded)")
     print("=" * table_width)
     print(" | ".join(header))
@@ -259,7 +259,7 @@ def _print_results_table(results: list[dict[str, Any]], iterations: int, warmup:
         ]
         print(" | ".join(row))
 
-    print("\nTTI = Time to Interactive (create_sandbox + first command execution)")
+    print("\nTTFC = Time to First Command (create_sandbox + first command execution)")
     print("Each iteration uses a fresh cold-start sandbox.\n")
 
 
@@ -297,7 +297,7 @@ def _provider_setup_issues(selected_providers: list[str]) -> list[dict[str, Any]
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Run TTI parity benchmark")
+    parser = argparse.ArgumentParser(description="Run Time to First Command benchmark")
     parser.add_argument(
         "--providers",
         default=",".join(DEFAULT_PROVIDERS),
@@ -338,14 +338,14 @@ async def main() -> None:
     parser.add_argument(
         "--output",
         default=None,
-        help="Optional output path. Defaults to benchmarks/tti_parity_results_<timestamp>.json",
+        help="Optional output path. Defaults to benchmarks/ttfc_results_<timestamp>.json",
     )
     args = parser.parse_args()
 
     selected_providers = [name.strip() for name in args.providers.split(",") if name.strip()]
     registry = _provider_registry()
 
-    print("TTI Parity Benchmark")
+    print("Time to First Command Benchmark")
     print(f"Date: {datetime.now(UTC).isoformat()}")
     print(f"Providers: {', '.join(selected_providers)}")
     print(f"Iterations per provider: {args.iterations} (+ {args.warmup} warmup)")
@@ -399,7 +399,7 @@ async def main() -> None:
     output_path = (
         Path(args.output)
         if args.output
-        else Path(__file__).parent / f"tti_parity_results_{timestamp}.json"
+        else Path(__file__).parent / f"ttfc_results_{timestamp}.json"
     )
     payload = {
         "version": "1.0",

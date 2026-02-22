@@ -1,43 +1,42 @@
 # Sandboxes Benchmarks
 
-Benchmark suite for comparing sandbox provider performance with statistically meaningful results.
+Benchmark suite for comparing sandbox provider performance.
 
 ## Quick Start
 
 ```bash
-# Run the primary TTI benchmark (recommended)
-python benchmarks/tti_parity_benchmark.py
+# Run the primary benchmark
+python benchmarks/ttfc_benchmark.py
 
 # Quick 5-iteration test
-python benchmarks/tti_parity_benchmark.py --iterations 5 --warmup 1
+python benchmarks/ttfc_benchmark.py --iterations 5 --warmup 1
 ```
 
 ## Methodology
 
-Our primary benchmark (`tti_parity_benchmark.py`) is designed for statistically meaningful results:
+The primary benchmark (`ttfc_benchmark.py`) is designed for statistically meaningful results:
 
 - **50 iterations** by default for reliable percentile calculations
 - **3 warmup runs** discarded to eliminate one-time initialization costs
 - **Full percentiles**: p50, p75, p99, p99.9 to expose tail latencies
-- **Fresh sandboxes**: each iteration creates a new sandbox, no pooling
 
 ## Benchmarks
 
 | Benchmark | Purpose | When to Use |
 |-----------|---------|-------------|
-| `tti_parity_benchmark.py` | TTI measurement | **Start here.** Primary benchmark for provider comparison. |
+| `ttfc_benchmark.py` | Time to First Command | **Start here.** Primary benchmark for provider comparison. |
 | `comprehensive_benchmark.py` | Diverse workloads | Testing different workload types (CPU, I/O, packages). |
 | `compare_providers.py` | Lifecycle breakdown | Understanding create/execute/destroy overhead. |
 | `benchmark_20x.py` | Throughput | Testing concurrent sandbox creation. |
 | `cold_vs_warm.py` | Variance analysis | Investigating startup consistency. |
 | `image_reuse.py` | Caching behavior | Understanding image/template caching. |
 
-## Primary Benchmark: TTI
+## Primary Benchmark: Time to First Command
 
-TTI (Time to Interactive) measures what users care about: how long until they can run code.
+TTFC measures what users care about: how long until they can run code.
 
 ```
-TTI = create_sandbox() + first command execution
+TTFC = create_sandbox() + first command execution
 ```
 
 Teardown is not included since it happens after the user's work is done.
@@ -46,13 +45,13 @@ Teardown is not included since it happens after the user's work is done.
 
 ```bash
 # Full run (50 iterations + 3 warmup per provider)
-python benchmarks/tti_parity_benchmark.py
+python benchmarks/ttfc_benchmark.py
 
 # Specific providers
-python benchmarks/tti_parity_benchmark.py --providers daytona,e2b
+python benchmarks/ttfc_benchmark.py --providers daytona,e2b
 
 # More iterations for better p99.9
-python benchmarks/tti_parity_benchmark.py --iterations 100 --warmup 5
+python benchmarks/ttfc_benchmark.py --iterations 100 --warmup 5
 ```
 
 ### Output
@@ -65,7 +64,7 @@ e2b          | 0.47       | 0.51       | 0.57       | 0.57       | 0.34       | 
 modal        | 2.50       | 2.80       | 3.17       | 3.18       | 2.42       | 3.18       | 50/50 OK
 ```
 
-Results are also saved to `tti_parity_results_<timestamp>.json`.
+Results are saved to `ttfc_results_<timestamp>.json`.
 
 ## Configuration
 
