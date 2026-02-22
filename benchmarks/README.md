@@ -1,116 +1,53 @@
 # Sandboxes Benchmarks
 
-Comprehensive benchmark suite for comparing sandbox provider performance.
+Benchmark suite for comparing sandbox provider performance.
 
 ## Available Benchmarks
 
-### comprehensive_benchmark.py (RECOMMENDED)
-**Apples-to-apples comparison with realistic workloads**
+### tti_parity_benchmark.py (PRIMARY)
+**TTI measurement with proper statistical analysis**
 
-Tests all configured providers with diverse scenarios:
-- Hello World (shell execution)
-- Prime Calculation (CPU-bound)
-- File I/O (1000 files)
-- Package Install (pip)
-- NumPy FFT (numerical computation)
+Measures Time to Interactive (TTI): `create_sandbox` + first command execution.
 
-**Features:**
-- Uses standardized runtime hints per provider:
-  - Modal/Daytona: standardized Docker image
-  - E2B/Hopx: configurable template IDs
-  - Sprites/Vercel: provider defaults
-- Multiple runs with statistical analysis (mean, stddev, min, max)
-- Detailed error reporting
-- Winner tracking across all tests
+- **50 iterations** by default for statistical significance
+- **3 warmup runs** discarded to eliminate outliers
+- **Percentiles**: p50, p75, p99, p99.9
+- Fresh cold-start sandbox each iteration
 
-**Usage:**
+```bash
+python benchmarks/tti_parity_benchmark.py
+python benchmarks/tti_parity_benchmark.py --providers daytona,e2b,modal --iterations 100
+```
+
+---
+
+### comprehensive_benchmark.py
+**Diverse workload comparison**
+
+Tests multiple scenarios: Hello World, Prime Calculation, File I/O (1000 files), pip install, NumPy FFT.
+
 ```bash
 python benchmarks/comprehensive_benchmark.py
 ```
 
-**Based on:** [ai-sandbox-benchmark](https://github.com/nibzard/ai-sandbox-benchmark) (Apache 2.0)
-
 ---
 
 ### compare_providers.py
-**Lifecycle breakdown (create/execute/destroy)**
+**Lifecycle breakdown**
 
-Tests basic sandbox operations with detailed timing for each phase:
-- Sandbox creation time
-- Command execution time
-- Cleanup/destroy time
-- Total end-to-end time
+Detailed timing for each phase: create, execute, destroy.
 
-**Best for:** Understanding overhead of each lifecycle phase
-
-**Usage:**
 ```bash
 python benchmarks/compare_providers.py
 ```
 
 ---
 
-### tti_parity_benchmark.py
-**TTI parity run with proper statistical analysis**
-
-Measures TTI (Time to Interactive) as:
-- `create_sandbox` (fresh cold-start sandbox)
-- first command (`echo "benchmark"`)
-- teardown not timed
-
-**Features:**
-- **50 iterations** by default (vs 10 in computesdk) for statistical significance
-- **3 warmup runs** discarded to eliminate cold-start outliers
-- **Percentiles**: p50, p75, p99, p99.9 (not just median/min/max)
-- **Standard deviation** for variance analysis
-- Sequential provider execution to avoid cross-provider interference
-
-**Usage:**
-```bash
-# Default: 50 iterations + 3 warmup per provider
-python benchmarks/tti_parity_benchmark.py
-
-# Custom run
-python benchmarks/tti_parity_benchmark.py \
-  --providers daytona,e2b,modal \
-  --iterations 100 \
-  --warmup 5 \
-  --create-timeout 120 \
-  --command-timeout 30
-```
-
-**Output:**
-```
-Provider     | p50 (s)    | p75 (s)    | p99 (s)    | p99.9 (s)  | Min (s)    | Max (s)    | Status
--------------+------------+------------+------------+------------+------------+------------+-----------
-daytona      | 0.59       | 0.61       | 0.63       | 0.63       | 0.55       | 0.63       | 50/50 OK
-```
-
-**Notes:**
-- `ModalProvider` has a default image in this repo; optionally override with:
-  `--modal-image <image>` or `BENCHMARK_PARITY_MODAL_IMAGE`.
-- Results are written to `benchmarks/tti_parity_results_<timestamp>.json` unless `--output` is set.
-
----
-
-### simple_benchmark.py
-**Quick smoke test**
-
-Fast create/exec/destroy verification across all configured providers.
-
-**Usage:**
-```bash
-python benchmarks/simple_benchmark.py
-```
-
----
-
 ### benchmark_20x.py
-**Concurrent execution test**
+**Throughput test**
 
-Tests 20 concurrent sandbox operations to measure parallelism and throughput.
+20 concurrent sandbox operations to measure parallelism.
 
-**Usage:**
 ```bash
 python benchmarks/benchmark_20x.py
 ```
@@ -118,11 +55,10 @@ python benchmarks/benchmark_20x.py
 ---
 
 ### cold_vs_warm.py
-**Cold start analysis**
+**Startup variance analysis**
 
-Compares cold start (first run) vs warm start (subsequent runs) performance.
+Compares first run vs subsequent runs performance.
 
-**Usage:**
 ```bash
 python benchmarks/cold_vs_warm.py
 ```
@@ -130,12 +66,10 @@ python benchmarks/cold_vs_warm.py
 ---
 
 ### image_reuse.py
-**Image caching test**
+**Image caching behavior**
 
-Tests how providers that support explicit image/template runtime configuration
-handle reuse and caching (currently Modal, Daytona, E2B, and Hopx).
+Tests how providers cache images/templates across sandbox creations.
 
-**Usage:**
 ```bash
 python benchmarks/image_reuse.py
 ```
