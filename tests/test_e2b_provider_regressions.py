@@ -1,10 +1,12 @@
 """Regression tests for E2B provider behaviors."""
 
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import sandboxes.providers.e2b as e2b_module
+from sandboxes.exceptions import ProviderError, SandboxNotFoundError
 from sandboxes.providers.e2b import E2BProvider
 
 
@@ -81,3 +83,67 @@ async def test_create_retries_when_e2b_transport_bound_to_closed_loop(monkeypatc
 
     assert sandbox.sandbox_id == "sb-retry"
     assert calls["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_run_code_returns_rich_outputs(monkeypatch):
+    """run_code maps Execution results to the hopx-compatible dict shape."""
+    from e2b_code_interpreter.models import Execution, Logs, Result
+
+    sandbox_id = "sb-code-123"
+    provider = E2BProvider(api_key="test-key")
+    provider._sandboxes[sandbox_id] = {"last_accessed": 0.0}
+
+    # Build a mock Execution with one PNG result and stdout
+    png_result = Result(png="iVBORw0KGgo=", text="<Figure>", is_main_result=True)
+    execution = Execution(
+        results=[png_result],
+        logs=Logs(stdout=["Plot created"], stderr=[]),
+        error=None,
+    )
+
+    mock_interpreter = MagicMock()
+    mock_interpreter.run_code = AsyncMock(return_value=execution)
+
+    mock_connect = AsyncMock(return_value=mock_interpreter)
+    monkeypatch.setattr(e2b_module, "E2BCodeInterpreter", MagicMock(connect=mock_connect))
+    monkeypatch.setattr(e2b_module, "E2B_CODE_INTERPRETER_AVAILABLE", True)
+
+    result = await provider.run_code(sandbox_id, code="import matplotlib")
+
+    assert result["success"] is True
+    assert result["stdout"] == "Plot created"
+    assert result["stderr"] == ""
+    assert result["exit_code"] == 0
+    assert result["execution_time"] >= 0.0
+
+    types = [o["type"] for o in result["rich_outputs"]]
+    assert "png" in types
+    assert "text" in types
+    png_entry = next(o for o in result["rich_outputs"] if o["type"] == "png")
+    assert png_entry["data"] == "iVBORw0KGgo="
+
+    mock_connect.assert_awaited_once_with(sandbox_id, api_key="test-key")
+
+
+@pytest.mark.asyncio
+async def test_run_code_raises_when_not_available(monkeypatch):
+    """run_code raises ProviderError when e2b_code_interpreter is not installed."""
+    monkeypatch.setattr(e2b_module, "E2B_CODE_INTERPRETER_AVAILABLE", False)
+
+    provider = E2BProvider(api_key="test-key")
+    provider._sandboxes["sb-x"] = {"last_accessed": 0.0}
+
+    with pytest.raises(ProviderError, match="e2b_code_interpreter not installed"):
+        await provider.run_code("sb-x", code="print(1)")
+
+
+@pytest.mark.asyncio
+async def test_run_code_raises_for_unknown_sandbox(monkeypatch):
+    """run_code raises SandboxNotFoundError for an untracked sandbox_id."""
+    monkeypatch.setattr(e2b_module, "E2B_CODE_INTERPRETER_AVAILABLE", True)
+
+    provider = E2BProvider(api_key="test-key")
+
+    with pytest.raises(SandboxNotFoundError):
+        await provider.run_code("sb-does-not-exist", code="print(1)")
