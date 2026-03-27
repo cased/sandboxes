@@ -27,8 +27,17 @@ try:
     E2B_AVAILABLE = True
 except ImportError:
     E2B_AVAILABLE = False
-    E2BSandbox = None  # Define as None when not available
+    E2BSandbox = None
     logger.warning("E2B SDK not available - install with: uv add e2b")
+
+try:
+    from e2b_code_interpreter import AsyncSandbox as E2BCodeInterpreter
+
+    E2B_CODE_INTERPRETER_AVAILABLE = True
+except ImportError:
+    E2B_CODE_INTERPRETER_AVAILABLE = False
+    E2BCodeInterpreter = None
+    logger.warning("e2b_code_interpreter not available - install with: uv add e2b-code-interpreter")
 
 
 class E2BProvider(SandboxProvider):
@@ -571,6 +580,104 @@ echo $!
         for sandbox_id in to_destroy:
             logger.info(f"Cleaning up idle sandbox {sandbox_id}")
             await self.destroy_sandbox(sandbox_id)
+
+    async def run_code(
+        self,
+        sandbox_id: str,
+        code: str,
+        language: str | None = None,
+        timeout: float | None = None,
+        request_timeout: float | None = None,
+        env_vars: dict[str, str] | None = None,
+        on_stdout=None,
+        on_stderr=None,
+        on_result=None,
+        on_error=None,
+    ) -> dict[str, Any]:
+        """
+        Execute code with rich output capture (plots, DataFrames, etc.).
+
+        Uses the e2b_code_interpreter SDK to run code via the Jupyter kernel
+        inside the sandbox, capturing rich MIME outputs (text, png, html, etc.)
+        alongside stdout/stderr.
+
+        The sandbox must have been created with template="code-interpreter-v1"
+        (which runs a Jupyter kernel). Sandboxes using "base" template will fail.
+
+        Args:
+            sandbox_id: ID of an existing sandbox
+            code: Code to execute
+            language: Kernel language (default: "python"). Accepts any language
+                supported by the sandbox's Jupyter kernels.
+            timeout: Code execution timeout in seconds (default: provider timeout)
+            request_timeout: HTTP request timeout in seconds
+            env_vars: Environment variables to set for this execution
+            on_stdout: Callback(OutputMessage) for real-time stdout lines
+            on_stderr: Callback(OutputMessage) for real-time stderr lines
+            on_result: Callback(Result) for each rich result object
+            on_error: Callback(ExecutionError) on execution error
+
+        Returns:
+            dict with keys: success, stdout, stderr, exit_code, execution_time,
+            rich_outputs (list of {type, data, metadata} dicts)
+
+        Raises:
+            ProviderError: if e2b_code_interpreter is not installed
+            SandboxNotFoundError: if sandbox_id is unknown
+            SandboxError: on execution failure
+        """
+        if not E2B_CODE_INTERPRETER_AVAILABLE:
+            raise ProviderError(
+                "e2b_code_interpreter not installed — install with: uv add e2b-code-interpreter"
+            )
+        if sandbox_id not in self._sandboxes:
+            raise SandboxNotFoundError(f"Sandbox {sandbox_id} not found")
+
+        try:
+            self._sandboxes[sandbox_id]["last_accessed"] = time.time()
+            start_time = time.time()
+
+            # Connect code-interpreter client to the existing running sandbox
+            interpreter = await E2BCodeInterpreter.connect(sandbox_id, api_key=self.api_key)
+
+            execution = await interpreter.run_code(
+                code=code,
+                language=language,
+                envs=env_vars,
+                timeout=float(timeout) if timeout is not None else float(self.timeout),
+                request_timeout=request_timeout,
+                on_stdout=on_stdout,
+                on_stderr=on_stderr,
+                on_result=on_result,
+                on_error=on_error,
+            )
+
+            # Map Result objects → [{type, data, metadata}] (mirrors hopx shape)
+            rich_outputs = []
+            for result in execution.results:
+                for fmt in result.formats():
+                    rich_outputs.append(
+                        {
+                            "type": fmt,
+                            "data": result[fmt],
+                            "metadata": result.extra or {},
+                        }
+                    )
+
+            return {
+                "success": execution.error is None,
+                "stdout": "\n".join(execution.logs.stdout),
+                "stderr": "\n".join(execution.logs.stderr),
+                "exit_code": 0 if execution.error is None else 1,
+                "execution_time": time.time() - start_time,
+                "rich_outputs": rich_outputs,
+            }
+
+        except (ProviderError, SandboxNotFoundError):
+            raise
+        except Exception as e:
+            logger.error(f"Failed to execute code in sandbox {sandbox_id}: {e}")
+            raise SandboxError(f"Failed to execute code: {e}") from e
 
     def __del__(self):
         """Cleanup on deletion."""
