@@ -6,6 +6,7 @@ from sandboxes.providers.e2b import E2BProvider
 from sandboxes.providers.hopx import HopxProvider
 from sandboxes.providers.modal import ModalProvider
 from sandboxes.providers.sprites import SpritesProvider
+from sandboxes.providers.tenki import TenkiProvider
 from sandboxes.providers.vercel import VercelProvider
 
 
@@ -68,6 +69,14 @@ def test_provider_capability_matrix_contract():
             "interactive_shell": True,
             "gpu": False,
         },
+        "tenki": {
+            "persistent": True,
+            "snapshot": True,
+            "streaming": True,
+            "file_upload": True,
+            "interactive_shell": True,
+            "gpu": False,
+        },
     }
 
     observed = {
@@ -78,6 +87,7 @@ def test_provider_capability_matrix_contract():
         "sprites": SpritesProvider.get_capabilities().as_dict(),
         "cloudflare": CloudflareProvider.get_capabilities().as_dict(),
         "vercel": VercelProvider.get_capabilities().as_dict(),
+        "tenki": TenkiProvider.get_capabilities().as_dict(),
     }
 
     assert observed == expected

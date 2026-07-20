@@ -77,6 +77,7 @@ class Sandbox:
         5. Vercel
         6. Modal
         7. Cloudflare (experimental)
+        8. Tenki
 
         The first registered provider becomes the default unless explicitly set.
         Users can override with Sandbox.configure(default_provider="...").
@@ -88,6 +89,7 @@ class Sandbox:
             HopxProvider,
             ModalProvider,
             SpritesProvider,
+            TenkiProvider,
             VercelProvider,
         )
 
@@ -180,6 +182,14 @@ class Sandbox:
             except Exception as e:
                 logger.debug(f"Failed to register Cloudflare provider: {e}")
 
+        # Try to register Tenki (priority 8)
+        if os.getenv("TENKI_API_KEY") or os.getenv("TENKI_AUTH_TOKEN"):
+            try:
+                manager.register_provider("tenki", TenkiProvider, {})
+                logger.info("Registered Tenki provider")
+            except Exception as e:
+                logger.debug(f"Failed to register Tenki provider: {e}")
+
     @classmethod
     def configure(
         cls,
@@ -193,6 +203,7 @@ class Sandbox:
         vercel_team_id: str | None = None,
         sprites_token: str | None = None,
         cloudflare_config: dict[str, str] | None = None,
+        tenki_api_key: str | None = None,
         default_provider: str | None = None,
     ) -> None:
         """
@@ -212,6 +223,7 @@ class Sandbox:
             HopxProvider,
             ModalProvider,
             SpritesProvider,
+            TenkiProvider,
             VercelProvider,
         )
 
@@ -246,6 +258,9 @@ class Sandbox:
 
         if cloudflare_config:
             manager.register_provider("cloudflare", CloudflareProvider, cloudflare_config)
+
+        if tenki_api_key:
+            manager.register_provider("tenki", TenkiProvider, {"api_key": tenki_api_key})
 
         if default_provider:
             manager.default_provider = default_provider
