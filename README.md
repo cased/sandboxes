@@ -9,7 +9,7 @@ Universal library for AI code execution sandboxes.
 
 `sandboxes` provides a unified interface for sandboxed code execution across multiple providers:
 
-- **Current providers**: E2B, Modal, Daytona, Hopx, Vercel, Sprites (Fly.io)
+- **Current providers**: E2B, Modal, Daytona, Hopx, Vercel, Sprites (Fly.io), Tenki
 - **Experimental**: Cloudflare (requires self-hosted Worker deployment)
 
 Write your code once and switch between providers with a single line change, or let the library automatically select a provider.
@@ -418,6 +418,7 @@ export VERCEL_TEAM_ID="..."
 export SPRITES_TOKEN="..."  # Or use `sprite login` for CLI mode
 export CLOUDFLARE_SANDBOX_BASE_URL="https://your-worker.workers.dev"
 export CLOUDFLARE_API_TOKEN="..."
+export TENKI_API_KEY="..."
 ```
 
 Then just use:
@@ -442,6 +443,7 @@ When you call `Sandbox.create()` or `run()`, the library checks for providers in
 5. **Vercel** - Looks for `VERCEL_TOKEN` + `VERCEL_PROJECT_ID` + `VERCEL_TEAM_ID`
 6. **Modal** - Looks for `~/.modal.toml` or `MODAL_TOKEN_ID`
 7. **Cloudflare** *(experimental)* - Looks for `CLOUDFLARE_SANDBOX_BASE_URL` + `CLOUDFLARE_API_TOKEN`
+8. **Tenki** - Looks for `TENKI_API_KEY`
 
 **The first provider with valid credentials becomes the default.** Cloudflare requires deploying your own Worker.
 
@@ -502,6 +504,7 @@ from sandboxes.providers import (
     VercelProvider,
     SpritesProvider,
     CloudflareProvider,
+    TenkiProvider,
 )
 
 # E2B - Uses E2B_API_KEY env var
@@ -528,6 +531,9 @@ provider = CloudflareProvider(
     base_url="https://your-worker.workers.dev",
     api_token="your-token",
 )
+
+# Tenki - Uses TENKI_API_KEY env var
+provider = TenkiProvider()
 ```
 
 Each provider requires appropriate authentication:
@@ -538,6 +544,7 @@ Each provider requires appropriate authentication:
 - **Vercel**: Set `VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, and `VERCEL_TEAM_ID`
 - **Sprites**: Set `SPRITES_TOKEN` environment variable, or run `sprite login` for CLI mode
 - **Cloudflare** *(experimental)*: Deploy the [Cloudflare sandbox Worker](https://github.com/cloudflare/sandbox-sdk) and set `CLOUDFLARE_SANDBOX_BASE_URL`, `CLOUDFLARE_API_TOKEN`, and (optionally) `CLOUDFLARE_ACCOUNT_ID`
+- **Tenki**: Install the SDK with `uv pip install "cased-sandboxes[tenki]"` (pulls the `tenki` package) and set `TENKI_API_KEY` (get one at [tenki.cloud](https://tenki.cloud))
 
 > **Cloudflare setup tips (experimental)**
 >
@@ -720,6 +727,9 @@ export SPRITES_TOKEN="..."
 export CLOUDFLARE_SANDBOX_BASE_URL="https://your-worker.workers.dev"
 export CLOUDFLARE_API_TOKEN="..."
 export CLOUDFLARE_ACCOUNT_ID="..."  # Optional
+
+# Tenki
+export TENKI_API_KEY="..."
 ```
 
 ## Multi-Language Support
@@ -985,4 +995,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 Built by [Cased](https://cased.com)
 
-Thanks to the teams at E2B, Modal, Daytona, Hopx, Vercel, Fly.io (Sprites), and Cloudflare for their excellent sandbox platforms.
+Thanks to the teams at E2B, Modal, Daytona, Hopx, Vercel, Fly.io (Sprites), Cloudflare, and Tenki for their excellent sandbox platforms.

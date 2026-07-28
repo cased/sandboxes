@@ -54,6 +54,13 @@ try:
 except ImportError:
     pass
 
+try:
+    from .tenki import TenkiProvider
+
+    _providers["tenki"] = TenkiProvider
+except ImportError:
+    pass
+
 
 def get_provider(name: str) -> type[SandboxProvider] | None:
     """Get a provider class by name."""

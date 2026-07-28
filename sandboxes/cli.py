@@ -67,6 +67,13 @@ def _provider_classes():
     except ImportError:
         pass
 
+    try:
+        from sandboxes.providers.tenki import TenkiProvider
+
+        providers["tenki"] = TenkiProvider
+    except ImportError:
+        pass
+
     return providers
 
 
@@ -516,6 +523,7 @@ def providers(capabilities):
             "Cloudflare Workers + Containers (⚠️  experimental)",
             True,
         ),
+        ("tenki", "TENKI_API_KEY", "Tenki managed microVM sandboxes", False),
     ]
 
     for name, auth, description, is_experimental in providers:
@@ -546,6 +554,8 @@ def providers(capabilities):
                 (os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_API_KEY"))
                 and os.getenv("CLOUDFLARE_SANDBOX_BASE_URL")
             )
+        elif name == "tenki":
+            configured = bool(os.getenv("TENKI_API_KEY") or os.getenv("TENKI_AUTH_TOKEN"))
         else:
             configured = False
 
@@ -612,6 +622,7 @@ def providers(capabilities):
     click.echo(
         "  Cloudflare (experimental): Deploy Worker from https://github.com/cloudflare/sandbox-sdk"
     )
+    click.echo("  Tenki: export TENKI_API_KEY=your_key")
 
 
 def _run_claude_sprites(name: str | None, keep: bool, list_sandboxes: bool):
