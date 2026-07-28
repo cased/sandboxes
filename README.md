@@ -544,7 +544,7 @@ Each provider requires appropriate authentication:
 - **Vercel**: Set `VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, and `VERCEL_TEAM_ID`
 - **Sprites**: Set `SPRITES_TOKEN` environment variable, or run `sprite login` for CLI mode
 - **Cloudflare** *(experimental)*: Deploy the [Cloudflare sandbox Worker](https://github.com/cloudflare/sandbox-sdk) and set `CLOUDFLARE_SANDBOX_BASE_URL`, `CLOUDFLARE_API_TOKEN`, and (optionally) `CLOUDFLARE_ACCOUNT_ID`
-- **Tenki**: Set `TENKI_API_KEY` environment variable (get one at [tenki.cloud](https://tenki.cloud))
+- **Tenki**: Install the SDK with `uv pip install "cased-sandboxes[tenki]"` (pulls the `tenki` package) and set `TENKI_API_KEY` (get one at [tenki.cloud](https://tenki.cloud))
 
 > **Cloudflare setup tips (experimental)**
 >

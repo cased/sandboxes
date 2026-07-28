@@ -4,8 +4,8 @@ Tenki (https://tenki.cloud) is a managed microVM sandbox platform built for
 agentic workloads. Its control plane is a Connect/gRPC API (``SandboxService``)
 and command execution runs on a data plane reached over the sandbox gateway --
 there is no plain REST surface. This provider is therefore a thin adapter over
-the official ``tenki-sandbox`` async SDK (``AsyncClient`` / ``AsyncSandbox``),
-which speaks the real protocol, primes data-plane access, and handles auth.
+the official ``tenki`` async SDK (``AsyncClient`` / ``AsyncSandbox``), which
+speaks the real protocol, primes data-plane access, and handles auth.
 
 Auth uses a Tenki API key supplied via ``TENKI_API_KEY`` (or passed explicitly).
 Install the SDK with the ``tenki`` extra: ``pip install "cased-sandboxes[tenki]"``.
@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import warnings
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -38,7 +39,7 @@ from ..exceptions import (
 from ..security import validate_download_path, validate_upload_path
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from tenki_sandbox import AsyncClient, AsyncSandbox
+    from tenki import AsyncClient, AsyncSandbox
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,10 @@ _CREATE_PASSTHROUGH = (
     "github_token",
     "ssh_authorized_keys",
     "volumes",
+    # Added in tenki 0.5.x: build-from-template-spec and setup-phase inputs.
+    "from_template_spec",
+    "setup_env",
+    "setup_secrets",
 )
 
 
@@ -98,7 +103,6 @@ class TenkiProvider(SandboxProvider):
         *,
         base_url: str | None = None,
         gateway_url: str | None = None,
-        project_id: str | None = None,
         workspace_id: str | None = None,
         default_image: str | None = None,
         client: AsyncClient | None = None,
@@ -113,15 +117,24 @@ class TenkiProvider(SandboxProvider):
                 (``TENKI_API_ENDPOINT`` then the public endpoint).
             gateway_url: Sandbox gateway URL for the data plane. Falls back to
                 the SDK's resolution (derived from ``base_url``).
-            project_id: Default project scope for created/listed sandboxes.
-                Falls back to ``TENKI_PROJECT_ID``.
-            workspace_id: Default workspace scope. Falls back to
-                ``TENKI_WORKSPACE_ID``.
+            workspace_id: Default workspace scope for created/listed sandboxes.
+                Falls back to ``TENKI_WORKSPACE_ID``.
             default_image: Default image/template launched when a config does
                 not specify one. Falls back to ``TENKI_SANDBOX_IMAGE``.
             client: Pre-built ``AsyncClient`` (primarily for testing / reuse).
             **config: Additional configuration forwarded to the base class.
         """
+        # tenki 0.5.x removed project scoping, so project_id would otherwise be
+        # absorbed by **config and silently widen listings to the workspace.
+        if "project_id" in config:
+            config.pop("project_id")
+            warnings.warn(
+                "TenkiProvider(project_id=...) is ignored: tenki 0.5.x removed "
+                "project scoping; use workspace_id instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         super().__init__(**config)
 
         self.api_key = api_key or os.getenv("TENKI_API_KEY") or os.getenv("TENKI_AUTH_TOKEN")
@@ -132,7 +145,6 @@ class TenkiProvider(SandboxProvider):
 
         self.base_url = base_url or os.getenv("TENKI_API_ENDPOINT") or os.getenv("TENKI_API_URL")
         self.gateway_url = gateway_url or os.getenv("TENKI_SANDBOX_GATEWAY_URL")
-        self.project_id = project_id or os.getenv("TENKI_PROJECT_ID")
         self.workspace_id = workspace_id or os.getenv("TENKI_WORKSPACE_ID")
         self.default_image = default_image or os.getenv("TENKI_SANDBOX_IMAGE")
 
@@ -164,7 +176,6 @@ class TenkiProvider(SandboxProvider):
         )
 
         kwargs: dict[str, Any] = {
-            "project_id": self.project_id,
             "workspace_id": self.workspace_id,
             "env": config.env_vars or None,
             # SandboxConfig.labels are key/value, so they map to Tenki metadata.
@@ -217,10 +228,9 @@ class TenkiProvider(SandboxProvider):
         """List sandboxes, optionally filtered by labels (matched on metadata)."""
         client = await self._get_client()
         try:
-            if self.project_id:
-                handles = await client.list_project(self.project_id)
-            else:
-                handles = await client.list()
+            # list() pages through the whole workspace; passing workspace_id=None
+            # lets the SDK fall back to the token's default workspace.
+            handles = await client.list(workspace_id=self.workspace_id)
         except Exception as exc:  # noqa: BLE001 - normalized below
             raise self._map_error(exc) from exc
 
@@ -388,11 +398,10 @@ class TenkiProvider(SandboxProvider):
     async def _get_client(self) -> AsyncClient:
         if self._client is None:
             try:
-                from tenki_sandbox import AsyncClient
+                from tenki import AsyncClient
             except ImportError as exc:  # pragma: no cover - import guard
                 raise ProviderError(
-                    "tenki-sandbox SDK not installed; run "
-                    'pip install "cased-sandboxes[tenki]"'
+                    'tenki SDK not installed; run pip install "cased-sandboxes[tenki]"'
                 ) from exc
             self._client = AsyncClient(
                 auth_token=self.api_key,
@@ -435,7 +444,6 @@ class TenkiProvider(SandboxProvider):
             labels=dict(info.metadata) or labels,
             created_at=None,
             connection_info={
-                "project_id": info.project_id,
                 "workspace_id": info.workspace_id,
             },
             metadata={

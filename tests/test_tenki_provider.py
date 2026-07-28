@@ -1,10 +1,10 @@
 """Tests for the Tenki sandbox provider.
 
-The provider is a thin adapter over the official ``tenki-sandbox`` async SDK,
-so these tests inject a fake ``AsyncClient`` (via ``client=``) that mimics the
-slice of the SDK surface the provider touches. The provider classifies SDK
-errors by class name, so the fakes raise exceptions named exactly like the
-SDK's (``SessionNotFoundError`` etc.).
+The provider is a thin adapter over the official ``tenki`` async SDK, so these
+tests inject a fake ``AsyncClient`` (via ``client=``) that mimics the slice of
+the SDK surface the provider touches. The provider classifies SDK errors by
+class name, so the fakes raise exceptions named exactly like the SDK's
+(``SessionNotFoundError`` etc.).
 """
 
 import asyncio
@@ -41,14 +41,13 @@ class CommandTimeoutError(Exception):
 
 
 # --------------------------------------------------------------------------
-# Fakes mimicking tenki_sandbox.AsyncClient / AsyncSandbox
+# Fakes mimicking tenki.AsyncClient / AsyncSandbox
 # --------------------------------------------------------------------------
 def _info(sandbox_id="sbx-123", state="RUNNING", metadata=None):
     return SimpleNamespace(
         id=sandbox_id,
         name="demo",
         state=state,
-        project_id="proj-1",
         workspace_id="ws-1",
         cpu_cores=2,
         memory_mb=4096,
@@ -170,6 +169,7 @@ class FakeClient:
         self.list_result = list_result if list_result is not None else []
         self.whoami_error = whoami_error
         self.create_calls = []
+        self.list_calls = []
         self.closed = False
 
     async def create(self, **kwargs):
@@ -183,10 +183,8 @@ class FakeClient:
             return self.sandboxes[sandbox_id]
         raise SessionNotFoundError(sandbox_id)
 
-    async def list(self):
-        return list(self.list_result)
-
-    async def list_project(self, project_id):
+    async def list(self, *, workspace_id=None, tags=None, sticky=None):
+        self.list_calls.append({"workspace_id": workspace_id, "tags": tags, "sticky": sticky})
         return list(self.list_result)
 
     async def who_am_i(self):
@@ -253,6 +251,8 @@ async def test_tenki_happy_path():
     assert call["metadata"] == {"task": "demo"}
     assert call["memory_mb"] == 4096
     assert call["cpu_cores"] == 2
+    # tenki 0.5.x dropped projects; create() no longer accepts project_id.
+    assert "project_id" not in call
 
     fetched = await provider.get_sandbox("sbx-123")
     assert fetched is not None and fetched.id == "sbx-123"
@@ -269,6 +269,43 @@ async def test_tenki_happy_path():
     assert await provider.destroy_sandbox("sbx-123") is True
     assert sb.closed is True
     assert "sbx-123" not in provider._sandboxes  # noqa: SLF001 - intentional probe
+
+
+def test_project_id_warns_and_is_ignored():
+    """project_id was removed upstream; passing it warns instead of silently applying."""
+    with pytest.warns(DeprecationWarning, match="project_id"):
+        provider = TenkiProvider(client=FakeClient(), project_id="proj-1")
+    assert "project_id" not in provider.config
+    assert not hasattr(provider, "project_id")
+
+
+@pytest.mark.asyncio
+async def test_workspace_scope_is_forwarded(monkeypatch):
+    """workspace_id (arg or env) scopes both create() and list()."""
+    monkeypatch.setenv("TENKI_WORKSPACE_ID", "ws-env")
+    sb = FakeSandbox(_info("sbx-1"))
+    client = FakeClient(create_result=sb, list_result=[sb])
+    provider = _provider(client)
+    assert provider.workspace_id == "ws-env"
+
+    await provider.create_sandbox(SandboxConfig())
+    assert client.create_calls[0]["workspace_id"] == "ws-env"
+
+    await provider.list_sandboxes()
+    assert client.list_calls[0]["workspace_id"] == "ws-env"
+
+
+@pytest.mark.asyncio
+async def test_list_without_workspace_uses_default_scope(monkeypatch):
+    """Without a workspace_id the SDK's own default-workspace scope applies."""
+    monkeypatch.delenv("TENKI_WORKSPACE_ID", raising=False)
+    sb = FakeSandbox(_info("sbx-1"))
+    client = FakeClient(list_result=[sb])
+    provider = _provider(client)
+
+    listed = await provider.list_sandboxes()
+    assert [s.id for s in listed] == ["sbx-1"]
+    assert client.list_calls == [{"workspace_id": None, "tags": None, "sticky": None}]
 
 
 @pytest.mark.asyncio
