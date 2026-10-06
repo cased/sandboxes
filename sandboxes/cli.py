@@ -441,6 +441,7 @@ def test(provider):
         providers_to_test = [provider] if provider else ["e2b", "modal", "daytona"]
 
         results = []
+        exit_code = 0
         for p_name in providers_to_test:
             click.echo(f"\n🔬 Testing {p_name}...")
 
@@ -461,19 +462,23 @@ def test(provider):
                 # Test execute
                 click.echo("  Executing command...")
                 result = await p.execute_command(sandbox.id, "echo 'Hello from CLI test'")
-                if result.success and "Hello from CLI test" in result.stdout:
+                working = result.success and "Hello from CLI test" in result.stdout
+                if working:
                     click.echo("  ✅ Execution successful")
                 else:
                     click.echo("  ❌ Execution failed", err=True)
+                    exit_code = 1
 
                 # Test destroy
                 click.echo("  Destroying sandbox...")
-                await p.destroy_sandbox(sandbox.id)
+                if not await p.destroy_sandbox(sandbox.id):
+                    raise RuntimeError("Failed to destroy probe sandbox")
                 click.echo("  ✅ Destroyed")
 
-                results.append((p_name, "✅ Working"))
+                results.append((p_name, "✅ Working" if working else "❌ Failed: command test"))
 
             except Exception as e:
+                exit_code = 1
                 click.echo(f"  ❌ Error: {e}", err=True)
                 results.append((p_name, f"❌ Failed: {str(e)[:50]}"))
 
@@ -484,7 +489,9 @@ def test(provider):
         for p_name, status in results:
             click.echo(f"{p_name:10} {status}")
 
-    asyncio.run(_test())
+        return exit_code
+
+    sys.exit(asyncio.run(_test()))
 
 
 @cli.command()
