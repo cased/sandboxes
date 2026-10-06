@@ -88,7 +88,7 @@ class SandboxPool:
         self._busy_sandboxes: set[str] = set()
 
         # Label index for fast lookup
-        self._label_index: dict[str, set[str]] = {}
+        self._label_index: dict[tuple[str, str], set[str]] = {}
 
         # Locks for thread-safe operations
         self._lock = asyncio.Lock()
@@ -288,7 +288,7 @@ class SandboxPool:
 
         # Update label index
         for key, value in entry.labels.items():
-            label_key = f"{key}:{value}"
+            label_key = (key, value)
             if label_key not in self._label_index:
                 self._label_index[label_key] = set()
             self._label_index[label_key].add(sandbox.id)
@@ -304,7 +304,7 @@ class SandboxPool:
     async def _find_reusable_sandbox(self, labels: dict[str, str]) -> Sandbox | None:
         """Find an idle sandbox with matching labels."""
         # Build label keys
-        label_keys = [f"{k}:{v}" for k, v in labels.items()]
+        label_keys = list(labels.items())
 
         # Find sandboxes with all matching labels
         matching_ids = None
@@ -333,7 +333,7 @@ class SandboxPool:
             return []
 
         async with self._lock:
-            label_keys = [f"{k}:{v}" for k, v in labels.items()]
+            label_keys = list(labels.items())
             matching_ids: set[str] | None = None
 
             for label_key in label_keys:
@@ -435,7 +435,7 @@ class SandboxPool:
         entry = self._pool.pop(sandbox_id)
 
         for key, value in entry.labels.items():
-            label_key = f"{key}:{value}"
+            label_key = (key, value)
             if label_key in self._label_index:
                 self._label_index[label_key].discard(sandbox_id)
                 if not self._label_index[label_key]:
