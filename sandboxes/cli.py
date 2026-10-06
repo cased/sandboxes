@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shlex
 import sys
 
 import click
@@ -195,7 +196,7 @@ def run(command, file, language, provider, image, env, label, timeout, reuse, ke
         if code_to_execute and code_to_execute != command:
             # Build execution command based on language
             if lang == "python":
-                code_to_execute = f"python3 -c '''{code_to_execute}'''"
+                code_to_execute = f"python3 -c {shlex.quote(code_to_execute)}"
             elif lang == "node" or lang == "javascript":
                 # Escape single quotes and use node -e
                 escaped = code_to_execute.replace("'", "'\\''")
