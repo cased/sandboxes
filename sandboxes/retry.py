@@ -125,8 +125,8 @@ class RetryHandler:
                 logger.error(f"Retry predicate raised an error: {predicate_error}")
                 config_decision = None
 
-            if config_decision is True:
-                return True
+            if config_decision is not None:
+                return bool(config_decision)
 
         if self.config.retryable_errors:
             return isinstance(error, self.config.retryable_errors)

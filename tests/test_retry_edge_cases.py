@@ -102,10 +102,10 @@ class TestRetryEdgeCases:
                 raise ValueError("Please retry")
             return "success"
 
-        result = await handler.execute(conditional_operation)
-        assert result == "success"
-        # Should have succeeded on attempt 3 (0-indexed)
-        assert len(attempts) == 4
+        with pytest.raises(ValueError, match="Please retry"):
+            await handler.execute(conditional_operation)
+        # The predicate rejects the failure at odd attempt index 1.
+        assert attempts == [0, 1]
 
     async def test_circuit_breaker_with_zero_threshold(self):
         """Test CircuitBreaker with failure_threshold=0."""
