@@ -70,7 +70,8 @@ class SandboxManager:
             provider: Preferred provider name
             fallback_providers: List of providers to try if primary fails
         """
-        providers_to_try = [provider] if provider else []
+        primary_provider = provider or self.default_provider
+        providers_to_try = [primary_provider] if primary_provider else []
 
         if fallback_providers:
             providers_to_try.extend(fallback_providers)
