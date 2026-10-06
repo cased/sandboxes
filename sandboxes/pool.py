@@ -172,7 +172,7 @@ class SandboxPool:
                     async with self._lock:
                         # Try to find a reusable sandbox
                         if self.config.reuse_by_labels and config.labels:
-                            sandbox = await self._find_reusable_sandbox(config.labels)
+                            sandbox = await self._find_reusable_sandbox(config.labels, provider)
                             if sandbox:
                                 await self._mark_busy(sandbox.id)
                                 self._stats["reused"] += 1
@@ -301,8 +301,10 @@ class SandboxPool:
 
         return sandbox
 
-    async def _find_reusable_sandbox(self, labels: dict[str, str]) -> Sandbox | None:
-        """Find an idle sandbox with matching labels."""
+    async def _find_reusable_sandbox(
+        self, labels: dict[str, str], provider: Any | None = None
+    ) -> Sandbox | None:
+        """Find an idle sandbox with matching labels and provider ownership."""
         # Build label keys
         label_keys = [f"{k}:{v}" for k, v in labels.items()]
 
@@ -322,6 +324,8 @@ class SandboxPool:
         for sandbox_id in matching_ids:
             if sandbox_id in self._idle_sandboxes:
                 entry = self._pool[sandbox_id]
+                if provider is not None and entry.provider is not provider:
+                    continue
                 entry.access_count += 1
                 return entry.sandbox
 
