@@ -140,6 +140,7 @@ class RetryHandler:
     async def execute_with_retry(self, func: Callable[..., Any], *args, **kwargs) -> Any:
         """Execute function with retry logic."""
         last_error = None
+        operation_name = getattr(func, "__name__", type(func).__name__)
 
         max_attempts = self.config.max_retries + 1 + (1 if self.allow_additional_attempt else 0)
         attempt_index = 0
@@ -151,7 +152,7 @@ class RetryHandler:
                 last_error = exc
 
                 if not self._should_retry(exc, attempt_index):
-                    logger.warning(f"Non-retryable error in {func.__name__}: {exc}")
+                    logger.warning(f"Non-retryable error in {operation_name}: {exc}")
                     raise
 
                 self._handle_retry_callback(exc, attempt_index + 1)
@@ -164,7 +165,7 @@ class RetryHandler:
                 ):
                     delay = max(delay, self.circuit_breaker.recovery_timeout)
                 logger.info(
-                    f"Retry {attempt_index + 1}/{self.config.max_retries} for {func.__name__} "
+                    f"Retry {attempt_index + 1}/{self.config.max_retries} for {operation_name} "
                     f"after {delay:.2f}s. Error: {exc}"
                 )
                 await asyncio.sleep(delay)
@@ -181,7 +182,7 @@ class RetryHandler:
                     attempt_index += 1
                 continue
 
-        logger.error(f"All {self.config.max_retries} retries failed for {func.__name__}")
+        logger.error(f"All {self.config.max_retries} retries failed for {operation_name}")
         raise last_error
 
     async def _execute_attempt(self, func: Callable[..., Any], *args, **kwargs) -> Any:
