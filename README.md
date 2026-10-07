@@ -639,21 +639,26 @@ asyncio.run(main())
 
 ```python
 import asyncio
+import shlex
+from sandboxes import SandboxConfig
 from sandboxes.providers import E2BProvider
 
 async def main():
     provider = E2BProvider()
-    sandbox = await provider.create_sandbox()
-
-    # Stream output as it's generated
-    async for chunk in provider.stream_execution(
-        sandbox.id,
-        "for i in range(10): print(i); time.sleep(1)"
-    ):
-        print(chunk, end="")
+    sandbox = await provider.create_sandbox(SandboxConfig())
+    try:
+        command = "python3 -u -c " + shlex.quote(
+            "import time\nfor i in range(10):\n    print(i)\n    time.sleep(1)"
+        )
+        async for chunk in provider.stream_execution(sandbox.id, command):
+            print(chunk, end="")
+    finally:
+        await provider.destroy_sandbox(sandbox.id)
 
 asyncio.run(main())
 ```
+
+For E2B, `stream_execution` yields output chunks after the command completes.
 
 ### Connection Pooling
 
