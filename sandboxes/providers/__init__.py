@@ -55,6 +55,14 @@ except ImportError:
     pass
 
 
+try:
+    from .smol import SmolProvider
+
+    _providers["smol"] = SmolProvider
+except ImportError:
+    pass
+
+
 def get_provider(name: str) -> type[SandboxProvider] | None:
     """Get a provider class by name."""
     return _providers.get(name)

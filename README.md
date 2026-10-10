@@ -9,7 +9,7 @@ Universal library for AI code execution sandboxes.
 
 `sandboxes` provides a unified interface for sandboxed code execution across multiple providers:
 
-- **Current providers**: E2B, Modal, Daytona, Hopx, Vercel, Sprites (Fly.io)
+- **Current providers**: E2B, Modal, Daytona, Hopx, Vercel, Sprites (Fly.io), Smol Machines (local or Cloud)
 - **Experimental**: Cloudflare (requires self-hosted Worker deployment)
 
 Write your code once and switch between providers with a single line change, or let the library automatically select a provider.
@@ -26,6 +26,25 @@ Or add to your project:
 ```bash
 uv add cased-sandboxes
 ```
+
+## Smol Machines (local or Cloud)
+
+Install the optional SDK and use the same sandbox API on your machine or in Smol Cloud:
+
+```bash
+uv pip install "cased-sandboxes[smol]"
+sandboxes run "python3 --version" -p smol
+```
+
+On macOS with Apple Silicon or Linux with `/dev/kvm`, Smol runs the VM locally without a Cloud account. Select Cloud explicitly when you want remote capacity:
+
+```bash
+export SMOL_SANDBOX_TARGET=cloud
+export SMOL_CLOUD_TOKEN=your_token
+sandboxes run "python3 --version" -p smol
+```
+
+For Python, configure Cloud explicitly with `Sandbox.configure(smol_target="cloud", default_provider="smol")`, or use `Sandbox.create(provider="smol")` for local VMs. Cloud sandboxes have a one-hour default TTL, configurable through `SmolProvider(ttl_seconds=...)`. Existing cloud providers keep their auto-selection priority.
 
 ## Claude Code Integration
 

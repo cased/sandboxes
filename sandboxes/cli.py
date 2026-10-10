@@ -67,6 +67,13 @@ def _provider_classes():
     except ImportError:
         pass
 
+    try:
+        from sandboxes.providers.smol import SmolProvider
+
+        providers["smol"] = SmolProvider
+    except ImportError:
+        pass
+
     return providers
 
 
@@ -97,6 +104,8 @@ def get_provider(name: str):
                 project_id=os.getenv("VERCEL_PROJECT_ID"),
                 team_id=os.getenv("VERCEL_TEAM_ID"),
             )
+        if name == "smol":
+            return provider_class(target=os.getenv("SMOL_SANDBOX_TARGET", "local"))
         return provider_class()
     except Exception as e:
         click.echo(f"❌ Failed to initialize {name}: {e}", err=True)
@@ -118,7 +127,7 @@ def cli():
     "--provider",
     "-p",
     default="daytona",
-    help="Provider to use (e.g. daytona, e2b, modal, vercel)",
+    help="Provider to use (e.g. daytona, e2b, modal, smol)",
 )
 @click.option("--image", "-i", help="Docker image or template")
 @click.option("--env", "-e", multiple=True, help="Environment variables (KEY=VALUE)")

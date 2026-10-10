@@ -77,6 +77,8 @@ class Sandbox:
         5. Vercel
         6. Modal
         7. Cloudflare (experimental)
+        8. Smol Machines (local only when KVM/Apple Silicon is available,
+           or Cloud when SMOL_SANDBOX_TARGET=cloud is explicitly set)
 
         The first registered provider becomes the default unless explicitly set.
         Users can override with Sandbox.configure(default_provider="...").
@@ -180,6 +182,21 @@ class Sandbox:
             except Exception as e:
                 logger.debug(f"Failed to register Cloudflare provider: {e}")
 
+        # Do not silently move local work to Cloud just because a Cloud token
+        # exists; switching targets must be explicit.
+        import platform
+        import sys
+
+        from .providers import get_provider
+
+        smol_provider = get_provider("smol")
+        target = os.getenv("SMOL_SANDBOX_TARGET", "local")
+        local_available = (
+            sys.platform == "linux" and os.access("/dev/kvm", os.R_OK | os.W_OK)
+        ) or (sys.platform == "darwin" and platform.machine() in ("arm64", "aarch64"))
+        if smol_provider and (target == "cloud" or (target == "local" and local_available)):
+            manager.register_provider("smol", smol_provider, {"target": target})
+
     @classmethod
     def configure(
         cls,
@@ -193,6 +210,7 @@ class Sandbox:
         vercel_team_id: str | None = None,
         sprites_token: str | None = None,
         cloudflare_config: dict[str, str] | None = None,
+        smol_target: str | None = None,
         default_provider: str | None = None,
     ) -> None:
         """
@@ -246,6 +264,15 @@ class Sandbox:
 
         if cloudflare_config:
             manager.register_provider("cloudflare", CloudflareProvider, cloudflare_config)
+
+        if smol_target:
+            from .exceptions import ProviderError
+            from .providers import get_provider
+
+            smol_provider = get_provider("smol")
+            if smol_provider is None:
+                raise ProviderError("Install cased-sandboxes[smol] to use Smol Machines")
+            manager.register_provider("smol", smol_provider, {"target": smol_target})
 
         if default_provider:
             manager.default_provider = default_provider
